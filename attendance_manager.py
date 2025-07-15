@@ -1,6 +1,7 @@
 import json
 import csv
 import os
+import numpy as np
 from datetime import datetime, date
 from typing import Dict, List, Optional
 import logging
@@ -25,6 +26,21 @@ class AttendanceManager:
         if not os.path.exists(logs_folder):
             os.makedirs(logs_folder)
             self.logger.info(f"Created attendance logs folder: {logs_folder}")
+    
+    def _convert_numpy_types(self, obj):
+        """Convert NumPy types to native Python types for JSON serialization"""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        else:
+            return obj
     
     def start_session(self, session_name: Optional[str] = None) -> str:
         """
@@ -87,6 +103,9 @@ class AttendanceManager:
         if self.current_session is None:
             self.logger.warning("No active session to mark attendance")
             return False
+        
+        # Convert NumPy types to native Python types
+        confidence = self._convert_numpy_types(confidence)
         
         timestamp = datetime.now().isoformat()
         
@@ -274,9 +293,12 @@ class AttendanceManager:
             return False
         
         try:
+            # Convert NumPy types before saving
+            session_data = self._convert_numpy_types(self.current_session)
+            
             session_file = os.path.join(self.logs_folder, f"{self.current_session['id']}.json")
             with open(session_file, 'w') as f:
-                json.dump(self.current_session, f, indent=2)
+                json.dump(session_data, f, indent=2)
             
             return True
             
