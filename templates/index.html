@@ -658,6 +658,7 @@
                                         <th>Last Seen</th>
                                         <th>Confidence</th>
                                         <th>Detections</th>
+                                        <th>Lateness</th> <!-- New column -->
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -671,6 +672,11 @@
                                 <td>${new Date(data.last_seen).toLocaleTimeString()}</td>
                                 <td>${(data.confidence * 100).toFixed(1)}%</td>
                                 <td>${data.detection_count}</td>
+                                <td>
+                                    <span class="badge bg-${data.lateness?.color || 'secondary'}">
+                                        ${data.lateness?.status || 'Unknown'}
+                                    </span>
+                                </td>
                             </tr>
                         `;
                     });
