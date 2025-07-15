@@ -2,7 +2,7 @@ import json
 import csv
 import os
 import numpy as np
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional
 import logging
 
@@ -42,12 +42,75 @@ class AttendanceManager:
         else:
             return obj
     
-    def start_session(self, session_name: Optional[str] = None) -> str:
+    def _calculate_lateness(self, session_start_time: str, arrival_time: str) -> Dict:
+        """
+        Calculate lateness information based on blocks of 30 minutes.
+        """
+        try:
+            start_time = datetime.fromisoformat(session_start_time)
+            arrival = datetime.fromisoformat(arrival_time)
+            time_diff = arrival - start_time
+            minutes_late = time_diff.total_seconds() / 60.0
+
+            if minutes_late < 0:
+                status = "On Time"
+                color = "success"
+                category = "On Time"
+            elif minutes_late < 30:
+                status = "On Time"
+                color = "success"
+                category = "On Time"
+            elif minutes_late < 60:
+                status = "30 minutes late"
+                color = "warning"
+                category = "30 min late"
+            elif minutes_late < 90:
+                status = "1 hour late"
+                color = "warning"
+                category = "1 hour late"
+            elif minutes_late < 120:
+                status = "90 minutes late"
+                color = "danger"
+                category = "90 min late"
+            elif minutes_late < 150:
+                status = "2 hours late"
+                color = "danger"
+                category = "2 hours late"
+            elif minutes_late < 180:
+                status = "2.5 hours late"
+                color = "danger"
+                category = "2.5 hours late"
+            elif minutes_late < 210:
+                status = "3 hours late"
+                color = "danger"
+                category = "3 hours late"
+            else:
+                status = "Absent"
+                color = "secondary"
+                category = "Absent"
+
+            return {
+                'minutes_late': minutes_late,
+                'status': status,
+                'color': color,
+                'category': category
+            }
+        except Exception as e:
+            self.logger.error(f"Error calculating lateness: {e}")
+            return {
+                'minutes_late': 0,
+                'status': "Unknown",
+                'color': "secondary",
+                'category': "Unknown"
+            }
+    
+    def start_session(self, session_name: Optional[str] = None, session_start_time: Optional[str] = None) -> str:
         """
         Start a new attendance session
         
         Args:
             session_name (str, optional): Custom session name
+            session_start_time (str, optional): Session start time (ISO format)
             
         Returns:
             str: Session ID
@@ -55,16 +118,21 @@ class AttendanceManager:
         if session_name is None:
             session_name = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
+        # If no start time provided, use current time
+        if session_start_time is None:
+            session_start_time = datetime.now().isoformat()
+        
         self.current_session = {
             'id': session_name,
-            'start_time': datetime.now().isoformat(),
+            'start_time': datetime.now().isoformat(),  # Detection start time
+            'session_start_time': session_start_time,  # Session start time for punctuality
             'end_time': None,
             'attendance': {},
             'total_students': 0,
             'present_students': 0
         }
         
-        self.logger.info(f"Started attendance session: {session_name}")
+        self.logger.info(f"Started attendance session: {session_name} with start time: {session_start_time}")
         return session_name
     
     def end_session(self) -> bool:
@@ -109,6 +177,14 @@ class AttendanceManager:
         
         timestamp = datetime.now().isoformat()
         
+        # Calculate lateness if session start time is available
+        lateness_info = {}
+        if 'session_start_time' in self.current_session:
+            lateness_info = self._calculate_lateness(
+                self.current_session['session_start_time'], 
+                timestamp
+            )
+        
         # Check if student already marked present
         if student_name in self.current_session['attendance']:
             # Update existing entry with new timestamp and confidence
@@ -123,11 +199,12 @@ class AttendanceManager:
                 'first_seen': timestamp,
                 'last_seen': timestamp,
                 'confidence': confidence,
-                'detection_count': 1
+                'detection_count': 1,
+                'lateness': lateness_info
             }
             self.current_session['present_students'] += 1
         
-        self.logger.info(f"Marked attendance for {student_name} (confidence: {confidence:.2f})")
+        self.logger.info(f"Marked attendance for {student_name} (confidence: {confidence:.2f}, lateness: {lateness_info.get('status', 'Unknown')})")
         return True
     
     def get_current_attendance(self) -> Dict:
@@ -140,11 +217,25 @@ class AttendanceManager:
         if self.current_session is None:
             return {}
         
+        # Calculate lateness for all students
+        attendance_with_lateness = {}
+        for student_name, data in self.current_session['attendance'].items():
+            student_data = data.copy()
+            if 'session_start_time' in self.current_session and 'lateness' not in data:
+                # Calculate lateness for existing entries
+                lateness_info = self._calculate_lateness(
+                    self.current_session['session_start_time'], 
+                    data['first_seen']
+                )
+                student_data['lateness'] = lateness_info
+            attendance_with_lateness[student_name] = student_data
+        
         return {
             'session_id': self.current_session['id'],
             'start_time': self.current_session['start_time'],
+            'session_start_time': self.current_session.get('session_start_time'),
             'present_students': self.current_session['present_students'],
-            'attendance': self.current_session['attendance']
+            'attendance': attendance_with_lateness
         }
     
     def get_session_summary(self, session_id: str) -> Optional[Dict]:
@@ -170,16 +261,21 @@ class AttendanceManager:
             attendance_count = len(session_data['attendance'])
             total_detections = sum(entry['detection_count'] for entry in session_data['attendance'].values())
             
+            # Calculate lateness statistics
+            lateness_stats = self._calculate_lateness_statistics(session_data)
+            
             summary = {
                 'session_id': session_data['id'],
                 'start_time': session_data['start_time'],
+                'session_start_time': session_data.get('session_start_time'),
                 'end_time': session_data['end_time'],
                 'duration_minutes': self._calculate_duration(session_data['start_time'], session_data['end_time']),
                 'total_students': session_data['total_students'],
                 'present_students': attendance_count,
                 'attendance_rate': attendance_count / session_data['total_students'] if session_data['total_students'] > 0 else 0,
                 'total_detections': total_detections,
-                'attendance': session_data['attendance']
+                'attendance': session_data['attendance'],
+                'lateness_stats': lateness_stats
             }
             
             return summary
@@ -187,6 +283,26 @@ class AttendanceManager:
         except Exception as e:
             self.logger.error(f"Error loading session {session_id}: {e}")
             return None
+    
+    def _calculate_lateness_statistics(self, session_data: Dict) -> Dict:
+        """Calculate lateness statistics for a session"""
+        if 'session_start_time' not in session_data:
+            return {}
+        
+        lateness_categories = {
+            'On Time': 0,
+            '0-30 min late': 0,
+            '30-60 min late': 0,
+            '60+ min late': 0
+        }
+        
+        for student_data in session_data['attendance'].values():
+            if 'lateness' in student_data:
+                category = student_data['lateness'].get('category', 'Unknown')
+                if category in lateness_categories:
+                    lateness_categories[category] += 1
+        
+        return lateness_categories
     
     def list_sessions(self) -> List[Dict]:
         """
@@ -210,7 +326,7 @@ class AttendanceManager:
     
     def export_to_csv(self, session_id: str, output_path: Optional[str] = None) -> Optional[str]:
         """
-        Export attendance data to CSV
+        Export attendance data to CSV with lateness information
         
         Args:
             session_id (str): Session ID to export
@@ -237,19 +353,36 @@ class AttendanceManager:
                     'Last Seen',
                     'Confidence',
                     'Detection Count',
-                    'Duration (minutes)'
+                    'Duration (minutes)',
+                    'Lateness Status',
+                    'Minutes Late',
+                    'Lateness Category'
                 ])
                 
                 # Write attendance data
                 for student_name, data in summary['attendance'].items():
                     duration = self._calculate_duration(data['first_seen'], data['last_seen'])
+                    
+                    # Get lateness information
+                    lateness_status = "Unknown"
+                    minutes_late = 0
+                    lateness_category = "Unknown"
+                    
+                    if 'lateness' in data:
+                        lateness_status = data['lateness'].get('status', 'Unknown')
+                        minutes_late = data['lateness'].get('minutes_late', 0)
+                        lateness_category = data['lateness'].get('category', 'Unknown')
+                    
                     writer.writerow([
                         student_name,
                         data['first_seen'],
                         data['last_seen'],
                         f"{data['confidence']:.3f}",
                         data['detection_count'],
-                        duration
+                        duration,
+                        lateness_status,
+                        f"{minutes_late:.1f}",
+                        lateness_category
                     ])
                 
                 # Write summary
@@ -257,12 +390,21 @@ class AttendanceManager:
                 writer.writerow(['Summary'])
                 writer.writerow(['Session ID', summary['session_id']])
                 writer.writerow(['Start Time', summary['start_time']])
+                if 'session_start_time' in summary:
+                    writer.writerow(['Session Start Time', summary['session_start_time']])
                 writer.writerow(['End Time', summary['end_time']])
                 writer.writerow(['Duration (minutes)', summary['duration_minutes']])
                 writer.writerow(['Total Students', summary['total_students']])
                 writer.writerow(['Present Students', summary['present_students']])
                 writer.writerow(['Attendance Rate', f"{summary['attendance_rate']:.2%}"])
                 writer.writerow(['Total Detections', summary['total_detections']])
+                
+                # Write lateness statistics
+                if 'lateness_stats' in summary:
+                    writer.writerow([])
+                    writer.writerow(['Lateness Statistics'])
+                    for category, count in summary['lateness_stats'].items():
+                        writer.writerow([category, count])
             
             self.logger.info(f"Exported attendance data to {output_path}")
             return output_path
