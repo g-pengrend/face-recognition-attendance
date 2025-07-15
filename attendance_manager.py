@@ -257,6 +257,14 @@ class AttendanceManager:
             with open(session_file, 'r') as f:
                 session_data = json.load(f)
             
+            # Get the session start time (class start time)
+            session_start_time = session_data.get('session_start_time', session_data['start_time'])
+            
+            # Recalculate lateness for all students using the correct session start time
+            for student_name, data in session_data['attendance'].items():
+                if 'first_seen' in data:
+                    data['lateness'] = self._calculate_lateness(session_start_time, data['first_seen'])
+            
             # Calculate additional statistics
             attendance_count = len(session_data['attendance'])
             total_detections = sum(entry['detection_count'] for entry in session_data['attendance'].values())
@@ -267,7 +275,7 @@ class AttendanceManager:
             summary = {
                 'session_id': session_data['id'],
                 'start_time': session_data['start_time'],
-                'session_start_time': session_data.get('session_start_time'),
+                'session_start_time': session_start_time,
                 'end_time': session_data['end_time'],
                 'duration_minutes': self._calculate_duration(session_data['start_time'], session_data['end_time']),
                 'total_students': session_data['total_students'],
@@ -286,14 +294,15 @@ class AttendanceManager:
     
     def _calculate_lateness_statistics(self, session_data: Dict) -> Dict:
         """Calculate lateness statistics for a session"""
-        if 'session_start_time' not in session_data:
-            return {}
-        
         lateness_categories = {
             'On Time': 0,
-            '0-30 min late': 0,
-            '30-60 min late': 0,
-            '60+ min late': 0
+            '30 min late': 0,
+            '1 hour late': 0,
+            '90 min late': 0,
+            '2 hours late': 0,
+            '2.5 hours late': 0,
+            '3 hours late': 0,
+            'Absent': 0
         }
         
         for student_data in session_data['attendance'].values():
@@ -389,9 +398,8 @@ class AttendanceManager:
                 writer.writerow([])
                 writer.writerow(['Summary'])
                 writer.writerow(['Session ID', summary['session_id']])
-                writer.writerow(['Start Time', summary['start_time']])
-                if 'session_start_time' in summary:
-                    writer.writerow(['Session Start Time', summary['session_start_time']])
+                writer.writerow(['Detection Start Time', summary['start_time']])
+                writer.writerow(['Class Start Time', summary['session_start_time']])  # <-- Added this line
                 writer.writerow(['End Time', summary['end_time']])
                 writer.writerow(['Duration (minutes)', summary['duration_minutes']])
                 writer.writerow(['Total Students', summary['total_students']])
