@@ -26,6 +26,21 @@ camera = None
 detection_active = False
 detection_thread = None
 
+def convert_numpy_types(obj):
+    """Convert NumPy types to native Python types for JSON serialization"""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    else:
+        return obj
+
 def initialize_systems():
     """Initialize face recognition and attendance systems"""
     global face_system, attendance_manager
@@ -117,7 +132,7 @@ def get_status():
         'face_system_ready': face_system is not None and face_system.initialized,
         'detection_active': detection_active,
         'students_count': len(face_system.get_students_list()) if face_system else 0,
-        'current_session': current_attendance
+        'current_session': convert_numpy_types(current_attendance)
     }
     
     logger.info(f"Status: detection_active={detection_active}, present_students={current_attendance.get('present_students', 0)}")
@@ -205,7 +220,7 @@ def get_attendance():
     # Add detection status to response
     response = {
         'detection_active': detection_active,
-        'attendance': attendance
+        'attendance': convert_numpy_types(attendance)
     }
     
     logger.info(f"Attendance API: detection_active={detection_active}, present_students={attendance.get('present_students', 0)}")
@@ -220,7 +235,7 @@ def get_sessions():
         return jsonify({'error': 'Attendance manager not initialized'}), 500
     
     sessions = attendance_manager.list_sessions()
-    return jsonify({'sessions': sessions})
+    return jsonify({'sessions': convert_numpy_types(sessions)})
 
 @app.route('/api/sessions/<session_id>')
 def get_session(session_id):
@@ -234,7 +249,7 @@ def get_session(session_id):
     if not session:
         return jsonify({'error': 'Session not found'}), 404
     
-    return jsonify(session)
+    return jsonify(convert_numpy_types(session))
 
 @app.route('/api/export/<session_id>')
 def export_session(session_id):
@@ -317,7 +332,7 @@ def get_daily_summary():
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         
         summary = attendance_manager.get_daily_summary(target_date)
-        return jsonify(summary)
+        return jsonify(convert_numpy_types(summary))
         
     except Exception as e:
         logger.error(f"Error getting daily summary: {e}")
