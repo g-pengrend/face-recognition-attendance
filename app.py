@@ -158,9 +158,12 @@ def start_detection():
         return jsonify({'error': 'Detection already active'}), 400
     
     try:
-        # Start attendance session
+        # Get session details from request
         session_name = request.json.get('session_name')
-        session_id = attendance_manager.start_session(session_name)
+        session_start_time = request.json.get('session_start_time')  # <-- ADD THIS LINE
+        
+        # Start attendance session with start time
+        session_id = attendance_manager.start_session(session_name, session_start_time)  # <-- PASS session_start_time
         
         # Set total students count
         total_students = len(face_system.get_students_list())
@@ -171,7 +174,7 @@ def start_detection():
         detection_thread = threading.Thread(target=detection_loop, daemon=True)
         detection_thread.start()
         
-        logger.info(f"Started detection session: {session_id}")
+        logger.info(f"Started detection session: {session_id} with class start time: {session_start_time}")
         return jsonify({
             'success': True,
             'session_id': session_id,
