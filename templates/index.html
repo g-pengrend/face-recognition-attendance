@@ -250,6 +250,10 @@
                                         <label for="sessionName" class="form-label">Session Name (Optional)</label>
                                         <input type="text" class="form-control" id="sessionName" placeholder="Enter session name">
                                     </div>
+                                    <div class="mb-3">
+                                        <label for="sessionStartTime" class="form-label">Class Start Time</label>
+                                        <input type="datetime-local" class="form-control" id="sessionStartTime">
+                                    </div>
                                     <div class="d-grid gap-2">
                                         <button class="btn btn-start btn-custom" id="startBtn" onclick="startDetection()">
                                             <i class="fas fa-play"></i> Start Detection
@@ -461,9 +465,15 @@
         // Start detection
         async function startDetection() {
             const sessionName = document.getElementById('sessionName').value;
+            const sessionStartTime = document.getElementById('sessionStartTime').value;
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
             
+            if (!sessionStartTime) {
+                showAlert('danger', 'Please set the class start time!');
+                return;
+            }
+
             startBtn.disabled = true;
             startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
             
@@ -473,7 +483,10 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ session_name: sessionName })
+                    body: JSON.stringify({ 
+                        session_name: sessionName,
+                        session_start_time: sessionStartTime // <-- send to backend
+                    })
                 });
                 
                 const result = await response.json();
