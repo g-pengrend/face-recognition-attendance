@@ -81,10 +81,14 @@ def detection_loop():
             # Mark attendance for recognized faces
             for face in faces:
                 if face['student_name'] and face['confidence'] >= 0.6:
-                    attendance_manager.mark_attendance(
+                    success = attendance_manager.mark_attendance(
                         face['student_name'], 
                         face['confidence']
                     )
+                    if success:
+                        logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
+                    else:
+                        logger.warning(f"Failed to mark attendance for {face['student_name']}")
             
             time.sleep(0.1)  # Small delay to prevent excessive CPU usage
             
@@ -104,13 +108,19 @@ def get_status():
     """Get system status"""
     global face_system, attendance_manager, detection_active
     
+    # Get current attendance data
+    current_attendance = {}
+    if attendance_manager:
+        current_attendance = attendance_manager.get_current_attendance()
+    
     status = {
         'face_system_ready': face_system is not None and face_system.initialized,
         'detection_active': detection_active,
         'students_count': len(face_system.get_students_list()) if face_system else 0,
-        'current_session': attendance_manager.get_current_attendance() if attendance_manager else {}
+        'current_session': current_attendance
     }
     
+    logger.info(f"Status: detection_active={detection_active}, present_students={current_attendance.get('present_students', 0)}")
     return jsonify(status)
 
 @app.route('/api/students')
@@ -185,13 +195,21 @@ def stop_detection():
 @app.route('/api/attendance')
 def get_attendance():
     """Get current attendance status"""
-    global attendance_manager
+    global attendance_manager, detection_active
     
     if not attendance_manager:
         return jsonify({'error': 'Attendance manager not initialized'}), 500
     
     attendance = attendance_manager.get_current_attendance()
-    return jsonify(attendance)
+    
+    # Add detection status to response
+    response = {
+        'detection_active': detection_active,
+        'attendance': attendance
+    }
+    
+    logger.info(f"Attendance API: detection_active={detection_active}, present_students={attendance.get('present_students', 0)}")
+    return jsonify(response)
 
 @app.route('/api/sessions')
 def get_sessions():
@@ -369,7 +387,7 @@ if __name__ == '__main__':
         os.makedirs("attendance_logs", exist_ok=True)
         
         logger.info("Starting Flask application...")
-        app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+        app.run(host='0.0.0.0', port=5155, debug=True, threaded=True)
         
     except KeyboardInterrupt:
         logger.info("Shutting down...")

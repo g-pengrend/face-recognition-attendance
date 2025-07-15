@@ -369,6 +369,13 @@
             
             // Update status every 5 seconds
             statusUpdateInterval = setInterval(updateStatus, 5000);
+            
+            // Update attendance more frequently when on attendance tab
+            setInterval(() => {
+                if (document.getElementById('attendance-tab').classList.contains('active')) {
+                    updateAttendanceOnly();
+                }
+            }, 2000);
         });
 
         // Update system status
@@ -395,6 +402,13 @@
                 presentCount.textContent = status.current_session.present_students || 0;
                 totalStudents.textContent = status.students_count || 0;
                 
+                // Debug logging
+                console.log('Status update:', {
+                    detection_active: status.detection_active,
+                    present_students: status.current_session.present_students,
+                    attendance_data: status.current_session.attendance
+                });
+                
                 // Update attendance display if on attendance tab
                 if (document.getElementById('attendance-tab').classList.contains('active')) {
                     updateAttendanceDisplay(status.current_session);
@@ -402,6 +416,32 @@
                 
             } catch (error) {
                 console.error('Error updating status:', error);
+            }
+        }
+
+        // Update attendance only (for frequent updates)
+        async function updateAttendanceOnly() {
+            try {
+                const response = await fetch('/api/attendance');
+                const data = await response.json();
+                
+                const presentCount = document.getElementById('presentCount');
+                
+                // Update present count
+                presentCount.textContent = data.attendance.present_students || 0;
+                
+                // Update attendance display
+                updateAttendanceDisplay(data.attendance);
+                
+                // Debug logging
+                console.log('Attendance update:', {
+                    detection_active: data.detection_active,
+                    present_students: data.attendance.present_students,
+                    attendance_data: data.attendance.attendance
+                });
+                
+            } catch (error) {
+                console.error('Error updating attendance:', error);
             }
         }
 
@@ -729,7 +769,7 @@
         document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function (event) {
                 if (event.target.id === 'attendance-tab') {
-                    updateStatus(); // Refresh attendance data
+                    updateAttendanceOnly(); // Refresh attendance data
                 }
             });
         });

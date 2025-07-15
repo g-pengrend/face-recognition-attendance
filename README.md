@@ -35,7 +35,7 @@ python app.py
 ```
 
 ### 5. Open Your Browser
-Go to: `http://localhost:5000`
+Go to: `http://localhost:5155`
 
 ## 🎯 Features
 
@@ -110,11 +110,18 @@ insightface-attendance/
 - Reduce video resolution if needed
 - Ensure adequate lighting
 
+### Attendance Not Updating
+- Check browser console for debug messages
+- Ensure detection is active (green indicator)
+- Verify student photos are properly loaded
+- Run `python test_attendance.py` to test the system
+
 ### General Issues
 1. Run `python test_setup.py` to diagnose problems
-2. Check the console output for error messages
-3. Ensure all dependencies are installed correctly
-4. Verify student photos are in the correct format
+2. Run `python test_attendance.py` to test attendance functionality
+3. Check the console output for error messages
+4. Ensure all dependencies are installed correctly
+5. Verify student photos are in the correct format
 
 ## 📊 Sample Output
 
