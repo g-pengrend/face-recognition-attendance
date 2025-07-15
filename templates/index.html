@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Attendance System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            margin: 20px auto;
+            max-width: 1400px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 20px 20px 0 0;
+            text-align: center;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-active {
+            background-color: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .video-container {
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .video-feed {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+        }
+        
+        .control-panel {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+        
+        .btn-custom {
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-start {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            border: none;
+            color: white;
+        }
+        
+        .btn-stop {
+            background: linear-gradient(135deg, #dc3545, #fd7e14);
+            border: none;
+            color: white;
+        }
+        
+        .btn-start:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+        }
+        
+        .btn-stop:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(220, 53, 69, 0.3);
+        }
+        
+        .attendance-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .attendance-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .student-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #28a745;
+        }
+        
+        .student-item.unknown {
+            border-left-color: #dc3545;
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            margin: 15px 0;
+        }
+        
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .tab-content {
+            background: white;
+            border-radius: 0 0 15px 15px;
+            padding: 30px;
+        }
+        
+        .nav-tabs {
+            border-bottom: none;
+        }
+        
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 25px 25px 0 0;
+            margin-right: 5px;
+            font-weight: 600;
+            color: #6c757d;
+        }
+        
+        .nav-tabs .nav-link.active {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            color: white;
+        }
+        
+        .session-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .session-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="main-container">
+            <!-- Header -->
+            <div class="header">
+                <h1><i class="fas fa-user-check"></i> Classroom Attendance System</h1>
+                <p class="mb-0">Real-time face recognition for automatic attendance tracking</p>
+                <div class="mt-3">
+                    <span class="status-indicator" id="systemStatus"></span>
+                    <span id="statusText">System Status</span>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="tab-content">
+                <!-- Navigation Tabs -->
+                <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="live-tab" data-bs-toggle="tab" data-bs-target="#live" type="button" role="tab">
+                            <i class="fas fa-video"></i> Live Detection
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab">
+                            <i class="fas fa-clipboard-list"></i> Attendance
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="sessions-tab" data-bs-toggle="tab" data-bs-target="#sessions" type="button" role="tab">
+                            <i class="fas fa-history"></i> Sessions
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="students-tab" data-bs-toggle="tab" data-bs-target="#students" type="button" role="tab">
+                            <i class="fas fa-users"></i> Students
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Tab Contents -->
+                <div class="tab-content" id="mainTabContent">
+                    <!-- Live Detection Tab -->
+                    <div class="tab-pane fade show active" id="live" role="tabpanel">
+                        <div class="row">
+                            <div class="col-lg-8">
+                                <div class="video-container">
+                                    <img src="/video_feed" class="video-feed" alt="Live Video Feed">
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <div class="control-panel">
+                                    <h4><i class="fas fa-cogs"></i> Controls</h4>
+                                    <div class="mb-3">
+                                        <label for="sessionName" class="form-label">Session Name (Optional)</label>
+                                        <input type="text" class="form-control" id="sessionName" placeholder="Enter session name">
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-start btn-custom" id="startBtn" onclick="startDetection()">
+                                            <i class="fas fa-play"></i> Start Detection
+                                        </button>
+                                        <button class="btn btn-stop btn-custom" id="stopBtn" onclick="stopDetection()" disabled>
+                                            <i class="fas fa-stop"></i> Stop Detection
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="stats-card">
+                                    <div class="stats-number" id="presentCount">0</div>
+                                    <div>Students Present</div>
+                                </div>
+
+                                <div class="stats-card">
+                                    <div class="stats-number" id="totalStudents">0</div>
+                                    <div>Total Students</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attendance Tab -->
+                    <div class="tab-pane fade" id="attendance" role="tabpanel">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="attendance-card">
+                                    <h4><i class="fas fa-clipboard-check"></i> Current Session Attendance</h4>
+                                    <div id="currentAttendance">
+                                        <p class="text-muted">No active session. Start detection to begin tracking attendance.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sessions Tab -->
+                    <div class="tab-pane fade" id="sessions" role="tabpanel">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h4><i class="fas fa-history"></i> Previous Sessions</h4>
+                                    <button class="btn btn-primary" onclick="loadSessions()">
+                                        <i class="fas fa-sync"></i> Refresh
+                                    </button>
+                                </div>
+                                <div id="sessionsList">
+                                    <div class="loading">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2">Loading sessions...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Students Tab -->
+                    <div class="tab-pane fade" id="students" role="tabpanel">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h4><i class="fas fa-users"></i> Registered Students</h4>
+                                    <button class="btn btn-primary" onclick="loadStudents()">
+                                        <i class="fas fa-sync"></i> Refresh
+                                    </button>
+                                </div>
+                                <div id="studentsList">
+                                    <div class="loading">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2">Loading students...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Details Modal -->
+    <div class="modal fade" id="sessionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Session Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="sessionModalBody">
+                    <!-- Session details will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="exportBtn" onclick="exportSession()">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentSessionId = null;
+        let statusUpdateInterval = null;
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            loadStudents();
+            loadSessions();
+            
+            // Update status every 5 seconds
+            statusUpdateInterval = setInterval(updateStatus, 5000);
+        });
+
+        // Update system status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                
+                const statusIndicator = document.getElementById('systemStatus');
+                const statusText = document.getElementById('statusText');
+                const presentCount = document.getElementById('presentCount');
+                const totalStudents = document.getElementById('totalStudents');
+                
+                // Update status indicator
+                if (status.face_system_ready) {
+                    statusIndicator.className = 'status-indicator status-active';
+                    statusText.textContent = 'System Ready';
+                } else {
+                    statusIndicator.className = 'status-indicator status-inactive';
+                    statusText.textContent = 'System Error';
+                }
+                
+                // Update counts
+                presentCount.textContent = status.current_session.present_students || 0;
+                totalStudents.textContent = status.students_count || 0;
+                
+                // Update attendance display if on attendance tab
+                if (document.getElementById('attendance-tab').classList.contains('active')) {
+                    updateAttendanceDisplay(status.current_session);
+                }
+                
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+
+        // Start detection
+        async function startDetection() {
+            const sessionName = document.getElementById('sessionName').value;
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+            
+            try {
+                const response = await fetch('/api/start-detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ session_name: sessionName })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentSessionId = result.session_id;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    showAlert('success', 'Detection started successfully!');
+                } else {
+                    showAlert('danger', result.error || 'Failed to start detection');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error starting detection: ' + error.message);
+            } finally {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Detection';
+            }
+        }
+
+        // Stop detection
+        async function stopDetection() {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            stopBtn.disabled = true;
+            stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+            
+            try {
+                const response = await fetch('/api/stop-detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentSessionId = null;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    showAlert('success', 'Detection stopped successfully!');
+                } else {
+                    showAlert('danger', result.error || 'Failed to stop detection');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error stopping detection: ' + error.message);
+            } finally {
+                stopBtn.disabled = false;
+                stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Detection';
+            }
+        }
+
+        // Load students
+        async function loadStudents() {
+            const studentsList = document.getElementById('studentsList');
+            studentsList.innerHTML = '<div class="loading"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading students...</p></div>';
+            
+            try {
+                const response = await fetch('/api/students');
+                const data = await response.json();
+                
+                if (data.students && data.students.length > 0) {
+                    let html = '';
+                    data.students.forEach(student => {
+                        html += `
+                            <div class="student-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="fas fa-user"></i>
+                                        <strong>${student}</strong>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="removeStudent('${student}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    studentsList.innerHTML = html;
+                } else {
+                    studentsList.innerHTML = '<p class="text-muted">No students registered. Add student photos to the "students" folder.</p>';
+                }
+            } catch (error) {
+                studentsList.innerHTML = '<p class="text-danger">Error loading students: ' + error.message + '</p>';
+            }
+        }
+
+        // Load sessions
+        async function loadSessions() {
+            const sessionsList = document.getElementById('sessionsList');
+            sessionsList.innerHTML = '<div class="loading"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading sessions...</p></div>';
+            
+            try {
+                const response = await fetch('/api/sessions');
+                const data = await response.json();
+                
+                if (data.sessions && data.sessions.length > 0) {
+                    let html = '';
+                    data.sessions.forEach(session => {
+                        const startTime = new Date(session.start_time).toLocaleString();
+                        const duration = session.duration_minutes ? `${session.duration_minutes.toFixed(1)} min` : 'N/A';
+                        
+                        html += `
+                            <div class="session-item" onclick="showSessionDetails('${session.session_id}')">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">${session.session_id}</h6>
+                                        <small class="text-muted">Started: ${startTime}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="fw-bold">${session.present_students}/${session.total_students}</div>
+                                        <small class="text-muted">${duration}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    sessionsList.innerHTML = html;
+                } else {
+                    sessionsList.innerHTML = '<p class="text-muted">No sessions found.</p>';
+                }
+            } catch (error) {
+                sessionsList.innerHTML = '<p class="text-danger">Error loading sessions: ' + error.message + '</p>';
+            }
+        }
+
+        // Show session details
+        async function showSessionDetails(sessionId) {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}`);
+                const session = await response.json();
+                
+                const modalBody = document.getElementById('sessionModalBody');
+                const exportBtn = document.getElementById('exportBtn');
+                
+                exportBtn.onclick = () => exportSession(sessionId);
+                
+                let html = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Session Information</h6>
+                            <p><strong>ID:</strong> ${session.session_id}</p>
+                            <p><strong>Start Time:</strong> ${new Date(session.start_time).toLocaleString()}</p>
+                            <p><strong>End Time:</strong> ${session.end_time ? new Date(session.end_time).toLocaleString() : 'N/A'}</p>
+                            <p><strong>Duration:</strong> ${session.duration_minutes ? session.duration_minutes.toFixed(1) + ' minutes' : 'N/A'}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Statistics</h6>
+                            <p><strong>Total Students:</strong> ${session.total_students}</p>
+                            <p><strong>Present:</strong> ${session.present_students}</p>
+                            <p><strong>Attendance Rate:</strong> ${(session.attendance_rate * 100).toFixed(1)}%</p>
+                            <p><strong>Total Detections:</strong> ${session.total_detections}</p>
+                        </div>
+                    </div>
+                `;
+                
+                if (session.attendance && Object.keys(session.attendance).length > 0) {
+                    html += `
+                        <hr>
+                        <h6>Attendance Details</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>First Seen</th>
+                                        <th>Last Seen</th>
+                                        <th>Confidence</th>
+                                        <th>Detections</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    Object.entries(session.attendance).forEach(([student, data]) => {
+                        html += `
+                            <tr>
+                                <td><strong>${student}</strong></td>
+                                <td>${new Date(data.first_seen).toLocaleTimeString()}</td>
+                                <td>${new Date(data.last_seen).toLocaleTimeString()}</td>
+                                <td>${(data.confidence * 100).toFixed(1)}%</td>
+                                <td>${data.detection_count}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+                
+                modalBody.innerHTML = html;
+                
+                const modal = new bootstrap.Modal(document.getElementById('sessionModal'));
+                modal.show();
+                
+            } catch (error) {
+                showAlert('danger', 'Error loading session details: ' + error.message);
+            }
+        }
+
+        // Export session
+        async function exportSession(sessionId) {
+            try {
+                window.open(`/api/export/${sessionId}`, '_blank');
+            } catch (error) {
+                showAlert('danger', 'Error exporting session: ' + error.message);
+            }
+        }
+
+        // Remove student
+        async function removeStudent(studentName) {
+            if (!confirm(`Are you sure you want to remove ${studentName}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/remove-student', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name: studentName })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', `Student ${studentName} removed successfully`);
+                    loadStudents();
+                } else {
+                    showAlert('danger', result.error || 'Failed to remove student');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error removing student: ' + error.message);
+            }
+        }
+
+        // Update attendance display
+        function updateAttendanceDisplay(attendance) {
+            const attendanceDiv = document.getElementById('currentAttendance');
+            
+            if (!attendance || !attendance.attendance || Object.keys(attendance.attendance).length === 0) {
+                attendanceDiv.innerHTML = '<p class="text-muted">No attendance recorded yet.</p>';
+                return;
+            }
+            
+            let html = `
+                <div class="mb-3">
+                    <strong>Session:</strong> ${attendance.session_id}<br>
+                    <strong>Started:</strong> ${new Date(attendance.start_time).toLocaleString()}<br>
+                    <strong>Present:</strong> ${attendance.present_students} students
+                </div>
+                <h6>Present Students:</h6>
+            `;
+            
+            Object.entries(attendance.attendance).forEach(([student, data]) => {
+                html += `
+                    <div class="student-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-user-check text-success"></i>
+                                <strong>${student}</strong>
+                            </div>
+                            <div class="text-end">
+                                <small class="text-muted">${(data.confidence * 100).toFixed(1)}% confidence</small><br>
+                                <small class="text-muted">${data.detection_count} detections</small>
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            First seen: ${new Date(data.first_seen).toLocaleTimeString()} | 
+                            Last seen: ${new Date(data.last_seen).toLocaleTimeString()}
+                        </small>
+                    </div>
+                `;
+            });
+            
+            attendanceDiv.innerHTML = html;
+        }
+
+        // Show alert
+        function showAlert(type, message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+
+        // Tab change handler
+        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function (event) {
+                if (event.target.id === 'attendance-tab') {
+                    updateStatus(); // Refresh attendance data
+                }
+            });
+        });
+    </script>
+</body>
+</html> 
