@@ -198,7 +198,7 @@ def get_attendance():
     global attendance_manager, detection_active
     
     if not attendance_manager:
-        return jsonify({'error': 'Attendance manager not initialized'}), 500
+        return jsonify({'detection_active': detection_active, 'attendance': {}}), 200
     
     attendance = attendance_manager.get_current_attendance()
     
@@ -387,7 +387,7 @@ if __name__ == '__main__':
         os.makedirs("attendance_logs", exist_ok=True)
         
         logger.info("Starting Flask application...")
-        app.run(host='0.0.0.0', port=5155, debug=True, threaded=True)
+        app.run(host='0.0.0.0', port=5155, debug=False, threaded=True)
         
     except KeyboardInterrupt:
         logger.info("Shutting down...")
