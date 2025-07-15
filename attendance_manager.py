@@ -52,6 +52,9 @@ class AttendanceManager:
             time_diff = arrival - start_time
             minutes_late = time_diff.total_seconds() / 60.0
 
+            # Debug logging
+            self.logger.info(f"Lateness calculation: Session start: {session_start_time}, Arrival: {arrival_time}, Minutes late: {minutes_late:.1f}")
+
             if minutes_late < 0:
                 status = "On Time"
                 color = "success"
@@ -180,10 +183,11 @@ class AttendanceManager:
         # Calculate lateness if session start time is available
         lateness_info = {}
         if 'session_start_time' in self.current_session:
-            lateness_info = self._calculate_lateness(
-                self.current_session['session_start_time'], 
-                timestamp
-            )
+            session_start_time = self.current_session['session_start_time']
+            self.logger.info(f"Marking attendance for {student_name} using session start time: {session_start_time}")
+            lateness_info = self._calculate_lateness(session_start_time, timestamp)
+        else:
+            self.logger.warning(f"No session_start_time found for {student_name}")
         
         # Check if student already marked present
         if student_name in self.current_session['attendance']:
@@ -217,23 +221,22 @@ class AttendanceManager:
         if self.current_session is None:
             return {}
         
-        # Calculate lateness for all students
+        # Calculate lateness for all students using the correct session start time
         attendance_with_lateness = {}
+        session_start_time = self.current_session.get('session_start_time', self.current_session['start_time'])
+        
         for student_name, data in self.current_session['attendance'].items():
             student_data = data.copy()
-            if 'session_start_time' in self.current_session and 'lateness' not in data:
-                # Calculate lateness for existing entries
-                lateness_info = self._calculate_lateness(
-                    self.current_session['session_start_time'], 
-                    data['first_seen']
-                )
+            # ALWAYS recalculate lateness to ensure it uses the correct session start time
+            if 'first_seen' in data:
+                lateness_info = self._calculate_lateness(session_start_time, data['first_seen'])
                 student_data['lateness'] = lateness_info
             attendance_with_lateness[student_name] = student_data
         
         return {
             'session_id': self.current_session['id'],
             'start_time': self.current_session['start_time'],
-            'session_start_time': self.current_session.get('session_start_time'),
+            'session_start_time': session_start_time,
             'present_students': self.current_session['present_students'],
             'attendance': attendance_with_lateness
         }
