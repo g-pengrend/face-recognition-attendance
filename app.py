@@ -8,6 +8,7 @@ from datetime import datetime
 import threading
 import time
 import logging
+import random # Added for smart sampling
 
 from face_recognition import FaceRecognitionSystem
 from attendance_manager import AttendanceManager
@@ -25,6 +26,73 @@ attendance_manager = None
 camera = None
 detection_active = False
 detection_thread = None
+
+class FaceSamplingManager:
+    def __init__(self, batch_size=5, batch_interval=2.0):
+        self.batch_size = batch_size
+        self.batch_interval = batch_interval
+        self.last_batch_time = time.time()
+        self.face_history = {}  # Track when each face was last processed
+        self.current_batch = []
+        
+    def get_next_batch(self, detected_faces):
+        """
+        Get the next batch of faces to process, ensuring fair coverage
+        """
+        current_time = time.time()
+        
+        if not detected_faces:
+            return []
+        
+        # Check if it's time to rotate batches
+        if current_time - self.last_batch_time >= self.batch_interval:
+            self._update_batch(detected_faces, current_time)
+            self.last_batch_time = current_time
+        
+        return self.current_batch
+    
+    def _update_batch(self, detected_faces, current_time):
+        """
+        Update the current batch with smart sampling
+        """
+        num_faces = len(detected_faces)
+        
+        if num_faces <= self.batch_size:
+            # Process all faces if we have fewer than batch size
+            self.current_batch = detected_faces
+            return
+        
+        # Calculate priority scores for each face
+        face_scores = []
+        for i, face in enumerate(detected_faces):
+            # Base score: time since last processed (higher = more priority)
+            last_processed = self.face_history.get(i, 0)
+            time_since_last = current_time - last_processed
+            
+            # Bonus score: confidence level
+            confidence_bonus = face.get('confidence', 0) * 10
+            
+            # Bonus score: face size (larger faces get priority)
+            bbox = face.get('bbox', [0, 0, 0, 0])
+            face_size = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+            size_bonus = min(face_size / 1000, 5)  # Cap size bonus
+            
+            total_score = time_since_last + confidence_bonus + size_bonus
+            face_scores.append((total_score, i, face))
+        
+        # Sort by priority score and select top batch_size
+        face_scores.sort(reverse=True)
+        selected_indices = [idx for _, idx, _ in face_scores[:self.batch_size]]
+        
+        # Update current batch and mark faces as processed
+        self.current_batch = [detected_faces[i] for i in selected_indices]
+        for idx in selected_indices:
+            self.face_history[idx] = current_time
+        
+        logger.info(f"Smart batch rotation: {len(self.current_batch)}/{num_faces} faces selected")
+
+# Initialize the sampling manager
+face_sampling_manager = FaceSamplingManager(batch_size=5, batch_interval=2.0)
 
 def convert_numpy_types(obj):
     """Convert NumPy types to native Python types for JSON serialization"""
@@ -55,13 +123,15 @@ def initialize_systems():
         return False
 
 def get_camera():
-    """Get camera instance"""
+    """Get camera instance with optimized settings"""
     global camera
     if camera is None:
         camera = cv2.VideoCapture(0)
+        # Reduce resolution for better performance
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        camera.set(cv2.CAP_PROP_FPS, 30)
+        camera.set(cv2.CAP_PROP_FPS, 15)  # Reduce FPS
+        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffer
     return camera
 
 def release_camera():
@@ -72,15 +142,15 @@ def release_camera():
         camera = None
 
 def detection_loop():
-    """Main detection loop for face recognition and attendance tracking"""
-    global detection_active, face_system, attendance_manager
+    """Detection loop with smart rotating face sampling"""
+    global detection_active, face_system, attendance_manager, face_sampling_manager
     
     camera = get_camera()
     if not camera.isOpened():
         logger.error("Failed to open camera")
         return
     
-    logger.info("Starting detection loop")
+    logger.info("Starting detection loop with smart face sampling")
     
     while detection_active:
         ret, frame = camera.read()
@@ -90,11 +160,14 @@ def detection_loop():
             continue
         
         try:
-            # Detect and recognize faces
-            faces = face_system.detect_faces(frame)
+            # Detect all faces in the frame
+            all_faces = face_system.detect_faces(frame)
             
-            # Mark attendance for recognized faces
-            for face in faces:
+            # Get the next batch of faces to process
+            current_batch = face_sampling_manager.get_next_batch(all_faces)
+            
+            # Process the current batch
+            for face in current_batch:
                 if face['student_name'] and face['confidence'] >= 0.6:
                     success = attendance_manager.mark_attendance(
                         face['student_name'], 
@@ -105,7 +178,7 @@ def detection_loop():
                     else:
                         logger.warning(f"Failed to mark attendance for {face['student_name']}")
             
-            time.sleep(0.1)  # Small delay to prevent excessive CPU usage
+            time.sleep(0.2)
             
         except Exception as e:
             logger.error(f"Error in detection loop: {e}")
@@ -270,29 +343,47 @@ def export_session(session_id):
 
 @app.route('/api/add-student', methods=['POST'])
 def add_student():
-    """Add a new student via API"""
-    global face_system
-    
-    if not face_system:
-        return jsonify({'error': 'Face system not initialized'}), 500
-    
-    try:
-        data = request.json
-        name = data.get('name')
-        image_path = data.get('image_path')
-        
-        if not name or not image_path:
-            return jsonify({'error': 'Name and image_path are required'}), 400
-        
-        success = face_system.add_student(name, image_path)
-        if success:
-            return jsonify({'success': True, 'message': f'Student {name} added successfully'})
-        else:
-            return jsonify({'error': 'Failed to add student'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error adding student: {e}")
-        return jsonify({'error': str(e)}), 500
+    """
+    Add a new student via UI (single image, multiple images, or existing folder)
+    """
+    name = request.form.get('name')
+    folder = request.form.get('folder')
+    folder_path = request.form.get('folder_path')
+    images = request.files.getlist('images')
+    image = request.files.get('image')
+
+    # Handle single image upload
+    if image:
+        save_path = os.path.join('students', folder or '', f"{name}.jpg")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        image.save(save_path)
+        # Add to face system
+        face_system.add_student(name, save_path)
+        return jsonify({'success': True, 'message': f'Student {name} added with single image.'})
+
+    # Handle multiple images (folder)
+    elif images and folder:
+        folder_dir = os.path.join('students', folder)
+        os.makedirs(folder_dir, exist_ok=True)
+        image_paths = []
+        for i, img in enumerate(images):
+            img_path = os.path.join(folder_dir, f"{name}_{i}.jpg")
+            img.save(img_path)
+            image_paths.append(img_path)
+        # Add to face system (implement add_student_multiple_images)
+        face_system.add_student_multiple_images(name, image_paths)
+        return jsonify({'success': True, 'message': f'Student {name} added with {len(image_paths)} images.'})
+
+    # Handle existing folder
+    elif folder_path:
+        # List all images in the folder
+        image_paths = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
+        if not image_paths:
+            return jsonify({'success': False, 'error': 'No images found in folder.'})
+        face_system.add_student_multiple_images(name, image_paths)
+        return jsonify({'success': True, 'message': f'Student {name} added from existing folder.'})
+
+    return jsonify({'success': False, 'error': 'Invalid request.'})
 
 @app.route('/api/remove-student', methods=['POST'])
 def remove_student():

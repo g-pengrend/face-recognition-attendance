@@ -370,6 +370,90 @@
         </div>
     </div>
 
+    <!-- Add Student Modal -->
+    <div class="modal fade" id="addStudentModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Student</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="form-check form-check-inline mb-3">
+                                <input class="form-check-input" type="radio" name="addMethod" id="singleImageRadio" value="single" checked>
+                                <label class="form-check-label" for="singleImageRadio">Single Image</label>
+                            </div>
+                            <div class="form-check form-check-inline mb-3">
+                                <input class="form-check-input" type="radio" name="addMethod" id="folderUploadRadio" value="folder">
+                                <label class="form-check-label" for="folderUploadRadio">Multiple Images (Folder)</label>
+                            </div>
+                            <div class="form-check form-check-inline mb-3">
+                                <input class="form-check-input" type="radio" name="addMethod" id="existingFolderRadio" value="existing">
+                                <label class="form-check-label" for="existingFolderRadio">Existing Folder</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="singleImageSection">
+                            <h6>Add Single Image</h6>
+                            <div class="mb-3">
+                                <label for="studentName" class="form-label">Student Name</label>
+                                <input type="text" class="form-control" id="studentName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="studentImage" class="form-label">Student Image (JPG, PNG, JPEG)</label>
+                                <input type="file" class="form-control" id="studentImage" accept="image/*" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="studentFolder" class="form-label">Folder for Single Image (Optional)</label>
+                                <input type="text" class="form-control" id="studentFolder" placeholder="e.g., JohnDoe">
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="folderUploadSection" class="d-none">
+                            <h6>Add Multiple Images (Folder)</h6>
+                            <div class="mb-3">
+                                <label for="folderStudentName" class="form-label">Student Name</label>
+                                <input type="text" class="form-control" id="folderStudentName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="folderName" class="form-label">Folder Name</label>
+                                <input type="text" class="form-control" id="folderName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="folderImages" class="form-label">Select Images (JPG, PNG, JPEG)</label>
+                                <input type="file" class="form-control" id="folderImages" accept="image/*" multiple required>
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="existingFolderSection" class="d-none">
+                            <h6>Add from Existing Folder</h6>
+                            <div class="mb-3">
+                                <label for="existingStudentName" class="form-label">Student Name</label>
+                                <input type="text" class="form-control" id="existingStudentName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="existingFolderPath" class="form-label">Folder Path</label>
+                                <input type="text" class="form-control" id="existingFolderPath" required>
+                            </div>
+                            <div id="folderContents" class="border rounded p-3 bg-light">
+                                <small class="text-muted">Select a folder to see its contents</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+          
+                <!-- Modal Footer -->
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="submitAddStudent()">
+                        <i class="fas fa-plus"></i> Add Student
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentSessionId = null;
@@ -390,6 +474,15 @@
                     updateAttendanceOnly();
                 }
             }, 2000);
+
+            // Show/hide sections based on method
+            document.querySelectorAll('input[name="addMethod"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    document.getElementById('singleImageSection').classList.toggle('d-none', this.value !== 'single');
+                    document.getElementById('folderUploadSection').classList.toggle('d-none', this.value !== 'folder');
+                    document.getElementById('existingFolderSection').classList.toggle('d-none', this.value !== 'existing');
+                });
+            });
         });
 
         // Update system status
@@ -859,6 +952,74 @@
                 }
             });
         });
+
+        // Example: Folder selection (for Electron or desktop app, use file dialog; for web, use backend API to list folders)
+        function selectFolder() {
+            // Implement folder selection logic here (e.g., open a modal or fetch folder list from backend)
+            alert('Folder selection not implemented in this demo.');
+        }
+
+        // Submit logic
+        async function submitAddStudent() {
+            const method = document.querySelector('input[name="addMethod"]:checked').value;
+            let formData = new FormData();
+
+            if (method === 'single') {
+                const name = document.getElementById('studentName').value;
+                const file = document.getElementById('studentImage').files[0];
+                const folder = document.getElementById('studentFolder').value;
+                if (!name || !file) {
+                    showAlert('danger', 'Please provide a name and photo.');
+                    return;
+                }
+                formData.append('name', name);
+                formData.append('image', file);
+                formData.append('folder', folder);
+            } else if (method === 'folder') {
+                const name = document.getElementById('folderStudentName').value;
+                const files = document.getElementById('folderImages').files;
+                const folder = document.getElementById('folderName').value;
+                if (!name || files.length === 0 || !folder) {
+                    showAlert('danger', 'Please provide a name, folder, and select images.');
+                    return;
+                }
+                formData.append('name', name);
+                formData.append('folder', folder);
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('images', files[i]);
+                }
+            } else if (method === 'existing') {
+                const name = document.getElementById('existingStudentName').value;
+                const folderPath = document.getElementById('existingFolderPath').value;
+                if (!name || !folderPath) {
+                    showAlert('danger', 'Please provide a name and select a folder.');
+                    return;
+                }
+                formData.append('name', name);
+                formData.append('folder_path', folderPath);
+            }
+
+            // Send to backend
+            try {
+                const response = await fetch('/api/add-student', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showAlert('success', result.message || 'Student added!');
+                    // Optionally refresh student list
+                    loadStudents();
+                    // Close modal
+                    var modal = bootstrap.Modal.getInstance(document.getElementById('addStudentModal'));
+                    modal.hide();
+                } else {
+                    showAlert('danger', result.error || 'Failed to add student.');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error adding student: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html> 

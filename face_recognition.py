@@ -10,14 +10,15 @@ import logging
 class FaceRecognitionSystem:
     def __init__(self, students_folder="students", threshold=0.6):
         """
-        Initialize the face recognition system
-        
-        Args:
-            students_folder (str): Path to folder containing student photos
-            threshold (float): Recognition threshold (0.0 to 1.0)
+        Initialize with distance-aware threshold
         """
         self.students_folder = students_folder
-        self.threshold = threshold
+        self.base_threshold = threshold
+        self.distance_thresholds = {
+            'close': threshold - 0.1,    # Easier for close faces
+            'medium': threshold,         # Standard threshold
+            'far': threshold + 0.1       # Stricter for far faces
+        }
         self.students_db = {}
         self.app = None
         self.initialized = False
@@ -126,21 +127,23 @@ class FaceRecognitionSystem:
     
     def detect_faces(self, frame):
         """
-        Detect and recognize faces in a frame
-        
-        Args:
-            frame (np.ndarray): Input frame (BGR format)
-            
-        Returns:
-            list: List of detected faces with recognition results
+        Optimized face detection and recognition
         """
         if not self.initialized:
             return []
         
+        # Resize frame for better performance
+        height, width = frame.shape[:2]
+        if width > 640:
+            scale = 640 / width
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            frame = cv2.resize(frame, (new_width, new_height))
+        
         # Convert BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # Detect faces
+        # Detect faces with optimized parameters
         faces = self.app.get(frame_rgb)
         
         results = []
@@ -161,14 +164,7 @@ class FaceRecognitionSystem:
     
     def add_student(self, name, image_path):
         """
-        Add a new student to the database
-        
-        Args:
-            name (str): Student name
-            image_path (str): Path to student's photo
-            
-        Returns:
-            bool: True if successful, False otherwise
+        Enhanced student addition with multiple angles and distances
         """
         try:
             img = cv2.imread(image_path)
@@ -181,12 +177,14 @@ class FaceRecognitionSystem:
             if len(faces) == 0:
                 return False
             
-            face = faces[0]
+            # Use the best quality face (largest bounding box)
+            best_face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+            
             self.students_db[name] = {
-                'embedding': face.embedding,
+                'embedding': best_face.embedding,
                 'image_path': image_path,
-                'bbox': face.bbox,
-                'landmarks': face.kps
+                'bbox': best_face.bbox,
+                'landmarks': best_face.kps
             }
             
             self.logger.info(f"Added new student: {name}")
