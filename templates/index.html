@@ -1056,7 +1056,11 @@
                                     <div class="row mb-3">
                                         <div class="col-12">
                                             <h6>Screenshot:</h6>
-                                            <img src="/${screenshotPath}" class="img-fluid border" style="max-height: 300px;">
+                                            <img src="/${screenshotPath}" class="img-fluid border" style="max-height: 300px;" 
+                                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                            <div style="display:none;" class="alert alert-warning">
+                                                Screenshot not available. Please try again.
+                                            </div>
                                         </div>
                                     </div>
                                     <p>Found ${unknownFaces.length} unknown face(s). Each face is labeled on the screenshot above.</p>
@@ -1070,7 +1074,12 @@
                                 <div class="card-body">
                                     <h6>Face #${face.unknown_index + 1}</h6>
                                     <div class="text-center mb-2">
-                                        <img src="/${face.thumbnail_path}" class="img-thumbnail" style="max-width: 150px; max-height: 150px;">
+                                        <img src="/${face.thumbnail_path}" class="img-thumbnail" 
+                                             style="max-width: 150px; max-height: 150px;"
+                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                        <div style="display:none;" class="alert alert-warning">
+                                            Thumbnail not available
+                                        </div>
                                     </div>
                                     <p class="text-muted">Confidence: ${(face.confidence * 100).toFixed(1)}%</p>
                                     <div class="mb-2">

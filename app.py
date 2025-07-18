@@ -26,8 +26,10 @@ attendance_manager = None
 camera = None
 detection_active = False
 detection_thread = None
-current_frame = None  # Store current frame for photo capture
-current_faces = []    # Store current detected faces for photo capture
+current_frame = None
+current_faces = []
+captured_frame = None  # Store the frame when screenshot is taken
+captured_faces = []    # Store faces from the captured frame
 
 class FaceSamplingManager:
     def __init__(self, batch_size=5, batch_interval=2.0):
@@ -522,24 +524,24 @@ def capture_current_frame():
 @app.route('/api/capture-screenshot', methods=['POST'])
 def capture_screenshot():
     """Capture a screenshot and return detected faces with image"""
-    global current_frame, current_faces, face_system
+    global current_frame, face_system, captured_frame, captured_faces
     
     try:
         if current_frame is None:
             return jsonify({'error': 'No frame available'}), 400
         
-        # Get current faces if not already detected
-        if not current_faces and face_system:
-            current_faces = face_system.detect_faces(current_frame)
+        # Store the captured frame and its faces
+        captured_frame = current_frame.copy()
+        captured_faces = face_system.detect_faces(captured_frame)
         
         # Create a copy of the frame for drawing
-        screenshot = current_frame.copy()
+        screenshot = captured_frame.copy()
         
         # Filter only unknown faces and draw them on screenshot
         unknown_faces = []
         unknown_face_index = 0  # Counter for unknown faces only
         
-        for i, face in enumerate(current_faces):
+        for i, face in enumerate(captured_faces):
             if not face['student_name']:
                 # Draw bounding box and label on screenshot
                 bbox = face['bbox']
@@ -553,16 +555,23 @@ def capture_screenshot():
                 cv2.putText(screenshot, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
                 # Crop the face for thumbnail
-                face_crop = current_frame[y1:y2, x1:x2]
+                face_crop = captured_frame[y1:y2, x1:x2]
                 if face_crop.size > 0:
                     # Save thumbnail
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     thumbnail_filename = f"thumbnail_{timestamp}_{unknown_face_index}.jpg"
                     thumbnail_path = os.path.join("students", "temp", thumbnail_filename)
-                    cv2.imwrite(thumbnail_path, face_crop)
+                    
+                    # Ensure temp directory exists
+                    os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
+                    
+                    # Save the thumbnail
+                    success = cv2.imwrite(thumbnail_path, face_crop)
+                    if not success:
+                        logger.error(f"Failed to save thumbnail: {thumbnail_path}")
                     
                     unknown_faces.append({
-                        'index': i,  # Original face index in detection
+                        'index': i,  # Original face index in captured frame
                         'unknown_index': unknown_face_index,  # Unknown face number (1, 2, 3...)
                         'bbox': convert_numpy_types(face['bbox']),
                         'confidence': face.get('confidence', 0),
@@ -581,12 +590,16 @@ def capture_screenshot():
         os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
         
         # Save the screenshot
-        cv2.imwrite(screenshot_path, screenshot)
+        success = cv2.imwrite(screenshot_path, screenshot)
+        if not success:
+            logger.error(f"Failed to save screenshot: {screenshot_path}")
+        
+        logger.info(f"Captured {len(unknown_faces)} unknown faces")
         
         return jsonify({
             'success': True,
             'unknown_faces': unknown_faces,
-            'total_faces': len(current_faces),
+            'total_faces': len(captured_faces),
             'screenshot_path': screenshot_path.replace('\\', '/'),
             'screenshot_filename': screenshot_filename
         })
@@ -598,7 +611,7 @@ def capture_screenshot():
 @app.route('/api/save-face-photo', methods=['POST'])
 def save_face_photo():
     """Save a cropped face photo and add to student database"""
-    global current_frame, face_system
+    global captured_frame, captured_faces, face_system
     
     try:
         data = request.json
@@ -606,22 +619,19 @@ def save_face_photo():
         student_name = data.get('student_name')
         is_new_student = data.get('is_new_student', True)
         
-        if current_frame is None:
-            return jsonify({'error': 'No frame available'}), 400
+        if captured_frame is None:
+            return jsonify({'error': 'No captured frame available'}), 400
         
-        # Get current faces
-        current_faces = face_system.detect_faces(current_frame)
+        if face_index >= len(captured_faces):
+            return jsonify({'error': f'Face index {face_index} out of range (max: {len(captured_faces)-1})'}), 400
         
-        if face_index >= len(current_faces):
-            return jsonify({'error': 'Face index out of range'}), 400
-        
-        # Get the face data
-        face = current_faces[face_index]
+        # Get the face data from captured frame
+        face = captured_faces[face_index]
         bbox = face['bbox']
         x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
         
-        # Crop the face from the frame
-        face_crop = current_frame[y1:y2, x1:x2]
+        # Crop the face from the captured frame
+        face_crop = captured_frame[y1:y2, x1:x2]
         
         if face_crop.size == 0:
             return jsonify({'error': 'Invalid face crop'}), 400
@@ -636,25 +646,31 @@ def save_face_photo():
         filepath = os.path.join(student_folder, filename)
         
         # Save the face crop
-        cv2.imwrite(filepath, face_crop)
+        success = cv2.imwrite(filepath, face_crop)
+        if not success:
+            return jsonify({'error': 'Failed to save face crop'}), 500
+        
+        logger.info(f"Saved face crop to: {filepath}")
         
         # Add to face system
-        success = False
+        db_success = False
         try:
             if is_new_student:
                 # Add as new student
-                success = face_system.add_student(student_name, filepath)
+                db_success = face_system.add_student(student_name, filepath)
+                logger.info(f"Adding new student {student_name}: {db_success}")
             else:
                 # Add to existing student (multiple images)
-                success = face_system.add_image_to_student(student_name, filepath)
+                db_success = face_system.add_image_to_student(student_name, filepath)
+                logger.info(f"Adding image to existing student {student_name}: {db_success}")
         except Exception as e:
-            logger.error(f"Error adding to face system: {e}")
+            logger.error(f"Exception in face system add: {e}")
             # Clean up the file if face system addition failed
             if os.path.exists(filepath):
                 os.remove(filepath)
-            return jsonify({'error': f'Failed to add to face system: {str(e)}'}), 500
+            return jsonify({'error': f'Exception in face system: {str(e)}'}), 500
         
-        if success:
+        if db_success:
             logger.info(f"Successfully added face for {student_name}")
             return jsonify({
                 'success': True,
@@ -666,11 +682,16 @@ def save_face_photo():
             # Clean up the file if face system addition failed
             if os.path.exists(filepath):
                 os.remove(filepath)
-            return jsonify({'error': 'Failed to add face to database'}), 500
+            return jsonify({'error': 'Face system failed to add student'}), 500
             
     except Exception as e:
         logger.error(f"Error saving face photo: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/students/temp/<filename>')
+def serve_temp_file(filename):
+    """Serve temporary files (screenshots and thumbnails)"""
+    return send_file(os.path.join('students', 'temp', filename))
 
 @app.errorhandler(404)
 def not_found(error):
