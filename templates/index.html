@@ -1023,12 +1023,12 @@
         // Capture current frame and detect unknown faces
         async function captureCurrentFrame() {
             try {
-                const response = await fetch('/api/capture-current-frame', { method: 'POST' });
+                const response = await fetch('/api/capture-screenshot', { method: 'POST' });
                 const result = await response.json();
                 
                 if (result.success) {
                     if (result.unknown_faces.length > 0) {
-                        showUnknownFacesModal(result.unknown_faces);
+                        showUnknownFacesModal(result.unknown_faces, result.screenshot_path);
                     } else {
                         showAlert('info', 'No unknown faces detected in the current frame.');
                     }
@@ -1040,20 +1040,26 @@
             }
         }
 
-        // Show modal for unknown faces
-        function showUnknownFacesModal(unknownFaces) {
+        // Show modal for unknown faces with thumbnails
+        function showUnknownFacesModal(unknownFaces, screenshotPath) {
             // First, load existing students for the dropdown
             loadStudentsForDropdown().then(existingStudents => {
                 let modalHtml = `
                     <div class="modal fade" id="unknownFacesModal" tabindex="-1">
-                        <div class="modal-dialog modal-lg">
+                        <div class="modal-dialog modal-xl">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h5 class="modal-title">Unknown Faces Detected</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <p>Found ${unknownFaces.length} unknown face(s). Each face is labeled on the video feed.</p>
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <h6>Screenshot:</h6>
+                                            <img src="/${screenshotPath}" class="img-fluid border" style="max-height: 300px;">
+                                        </div>
+                                    </div>
+                                    <p>Found ${unknownFaces.length} unknown face(s). Each face is labeled on the screenshot above.</p>
                                     <div class="row">
                 `;
                 
@@ -1062,7 +1068,10 @@
                         <div class="col-md-6 mb-3">
                             <div class="card">
                                 <div class="card-body">
-                                    <h6>Face #${index + 1} (Unknown #${index + 1} on video)</h6>
+                                    <h6>Face #${face.unknown_index + 1}</h6>
+                                    <div class="text-center mb-2">
+                                        <img src="/${face.thumbnail_path}" class="img-thumbnail" style="max-width: 150px; max-height: 150px;">
+                                    </div>
                                     <p class="text-muted">Confidence: ${(face.confidence * 100).toFixed(1)}%</p>
                                     <div class="mb-2">
                                         <label class="form-label">Student:</label>

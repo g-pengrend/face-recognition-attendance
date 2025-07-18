@@ -537,6 +537,8 @@ def capture_screenshot():
         
         # Filter only unknown faces and draw them on screenshot
         unknown_faces = []
+        unknown_face_index = 0  # Counter for unknown faces only
+        
         for i, face in enumerate(current_faces):
             if not face['student_name']:
                 # Draw bounding box and label on screenshot
@@ -546,16 +548,29 @@ def capture_screenshot():
                 # Draw red bounding box
                 cv2.rectangle(screenshot, (x1, y1), (x2, y2), (0, 0, 255), 3)
                 
-                # Draw face number
-                label = f"Unknown #{len(unknown_faces) + 1}"
+                # Draw face number (unknown_face_index + 1)
+                label = f"Unknown #{unknown_face_index + 1}"
                 cv2.putText(screenshot, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
-                unknown_faces.append({
-                    'index': i,
-                    'bbox': convert_numpy_types(face['bbox']),
-                    'confidence': face.get('confidence', 0),
-                    'embedding': convert_numpy_types(face['embedding'])
-                })
+                # Crop the face for thumbnail
+                face_crop = current_frame[y1:y2, x1:x2]
+                if face_crop.size > 0:
+                    # Save thumbnail
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    thumbnail_filename = f"thumbnail_{timestamp}_{unknown_face_index}.jpg"
+                    thumbnail_path = os.path.join("students", "temp", thumbnail_filename)
+                    cv2.imwrite(thumbnail_path, face_crop)
+                    
+                    unknown_faces.append({
+                        'index': i,  # Original face index in detection
+                        'unknown_index': unknown_face_index,  # Unknown face number (1, 2, 3...)
+                        'bbox': convert_numpy_types(face['bbox']),
+                        'confidence': face.get('confidence', 0),
+                        'embedding': convert_numpy_types(face['embedding']),
+                        'thumbnail_path': thumbnail_path.replace('\\', '/')
+                    })
+                    
+                    unknown_face_index += 1
         
         # Save screenshot with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -572,7 +587,7 @@ def capture_screenshot():
             'success': True,
             'unknown_faces': unknown_faces,
             'total_faces': len(current_faces),
-            'screenshot_path': screenshot_path.replace('\\', '/'),  # For web paths
+            'screenshot_path': screenshot_path.replace('\\', '/'),
             'screenshot_filename': screenshot_filename
         })
         
@@ -624,25 +639,37 @@ def save_face_photo():
         cv2.imwrite(filepath, face_crop)
         
         # Add to face system
-        if is_new_student:
-            # Add as new student
-            success = face_system.add_student(student_name, filepath)
-        else:
-            # Add to existing student (multiple images)
-            success = face_system.add_image_to_student(student_name, filepath)
+        success = False
+        try:
+            if is_new_student:
+                # Add as new student
+                success = face_system.add_student(student_name, filepath)
+            else:
+                # Add to existing student (multiple images)
+                success = face_system.add_image_to_student(student_name, filepath)
+        except Exception as e:
+            logger.error(f"Error adding to face system: {e}")
+            # Clean up the file if face system addition failed
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'error': f'Failed to add to face system: {str(e)}'}), 500
         
         if success:
+            logger.info(f"Successfully added face for {student_name}")
             return jsonify({
                 'success': True,
                 'message': f'Face photo saved for {student_name}',
                 'filepath': filepath
             })
         else:
-            logger.error(f"Failed to add face for {student_name} (file: {filepath})")
+            logger.error(f"Face system returned False for {student_name}")
+            # Clean up the file if face system addition failed
+            if os.path.exists(filepath):
+                os.remove(filepath)
             return jsonify({'error': 'Failed to add face to database'}), 500
             
     except Exception as e:
-        logger.error(f"Exception in save_face_photo: {e}")
+        logger.error(f"Error saving face photo: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(404)
