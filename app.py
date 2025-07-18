@@ -560,7 +560,7 @@ def capture_screenshot():
                     # Save thumbnail
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     thumbnail_filename = f"thumbnail_{timestamp}_{unknown_face_index}.jpg"
-                    thumbnail_path = os.path.join("students", "temp", thumbnail_filename)
+                    thumbnail_path = os.path.join("temp", thumbnail_filename)  # Changed to root temp
                     
                     # Ensure temp directory exists
                     os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
@@ -584,7 +584,7 @@ def capture_screenshot():
         # Save screenshot with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         screenshot_filename = f"screenshot_{timestamp}.jpg"
-        screenshot_path = os.path.join("students", "temp", screenshot_filename)
+        screenshot_path = os.path.join("temp", screenshot_filename)  # Changed to root temp
         
         # Ensure temp directory exists
         os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
@@ -652,19 +652,23 @@ def save_face_photo():
         
         logger.info(f"Saved face crop to: {filepath}")
         
-        # Add to face system
+        # Add to face system with detailed logging
         db_success = False
         try:
             if is_new_student:
                 # Add as new student
+                logger.info(f"Attempting to add new student: {student_name} with file: {filepath}")
                 db_success = face_system.add_student(student_name, filepath)
-                logger.info(f"Adding new student {student_name}: {db_success}")
+                logger.info(f"Result of add_student for {student_name}: {db_success}")
             else:
                 # Add to existing student (multiple images)
+                logger.info(f"Attempting to add image to existing student: {student_name} with file: {filepath}")
                 db_success = face_system.add_image_to_student(student_name, filepath)
-                logger.info(f"Adding image to existing student {student_name}: {db_success}")
+                logger.info(f"Result of add_image_to_student for {student_name}: {db_success}")
         except Exception as e:
             logger.error(f"Exception in face system add: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Clean up the file if face system addition failed
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -686,12 +690,15 @@ def save_face_photo():
             
     except Exception as e:
         logger.error(f"Error saving face photo: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/students/temp/<filename>')
+# Update the static file serving route
+@app.route('/temp/<filename>')
 def serve_temp_file(filename):
     """Serve temporary files (screenshots and thumbnails)"""
-    return send_file(os.path.join('students', 'temp', filename))
+    return send_file(os.path.join('temp', filename))
 
 @app.errorhandler(404)
 def not_found(error):
@@ -710,6 +717,7 @@ if __name__ == '__main__':
     try:
         # Create necessary directories
         os.makedirs("students", exist_ok=True)
+        os.makedirs("temp", exist_ok=True)  # Changed to root temp
         os.makedirs("attendance_logs", exist_ok=True)
         
         logger.info("Starting Flask application...")
