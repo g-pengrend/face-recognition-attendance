@@ -519,6 +519,67 @@ def capture_current_frame():
         logger.error(f"Error capturing current frame: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/capture-screenshot', methods=['POST'])
+def capture_screenshot():
+    """Capture a screenshot and return detected faces with image"""
+    global current_frame, current_faces, face_system
+    
+    try:
+        if current_frame is None:
+            return jsonify({'error': 'No frame available'}), 400
+        
+        # Get current faces if not already detected
+        if not current_faces and face_system:
+            current_faces = face_system.detect_faces(current_frame)
+        
+        # Create a copy of the frame for drawing
+        screenshot = current_frame.copy()
+        
+        # Filter only unknown faces and draw them on screenshot
+        unknown_faces = []
+        for i, face in enumerate(current_faces):
+            if not face['student_name']:
+                # Draw bounding box and label on screenshot
+                bbox = face['bbox']
+                x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+                
+                # Draw red bounding box
+                cv2.rectangle(screenshot, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                
+                # Draw face number
+                label = f"Unknown #{len(unknown_faces) + 1}"
+                cv2.putText(screenshot, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                
+                unknown_faces.append({
+                    'index': i,
+                    'bbox': convert_numpy_types(face['bbox']),
+                    'confidence': face.get('confidence', 0),
+                    'embedding': convert_numpy_types(face['embedding'])
+                })
+        
+        # Save screenshot with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_filename = f"screenshot_{timestamp}.jpg"
+        screenshot_path = os.path.join("students", "temp", screenshot_filename)
+        
+        # Ensure temp directory exists
+        os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
+        
+        # Save the screenshot
+        cv2.imwrite(screenshot_path, screenshot)
+        
+        return jsonify({
+            'success': True,
+            'unknown_faces': unknown_faces,
+            'total_faces': len(current_faces),
+            'screenshot_path': screenshot_path.replace('\\', '/'),  # For web paths
+            'screenshot_filename': screenshot_filename
+        })
+        
+    except Exception as e:
+        logger.error(f"Error capturing screenshot: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/save-face-photo', methods=['POST'])
 def save_face_photo():
     """Save a cropped face photo and add to student database"""
@@ -577,10 +638,11 @@ def save_face_photo():
                 'filepath': filepath
             })
         else:
+            logger.error(f"Failed to add face for {student_name} (file: {filepath})")
             return jsonify({'error': 'Failed to add face to database'}), 500
             
     except Exception as e:
-        logger.error(f"Error saving face photo: {e}")
+        logger.error(f"Exception in save_face_photo: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(404)

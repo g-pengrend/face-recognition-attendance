@@ -437,4 +437,4 @@ class FaceRecognitionSystem:
             
         except Exception as e:
             self.logger.error(f"Error adding image to student {student_name}: {e}")
-            return False 
+            return False
