@@ -645,12 +645,31 @@ def save_face_photo():
         filename = f"{student_name}_{timestamp}.jpg"
         filepath = os.path.join(student_folder, filename)
         
-        # Save the face crop
-        success = cv2.imwrite(filepath, face_crop)
+        # Save the face crop with proper encoding
+        success = cv2.imwrite(filepath, face_crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
         if not success:
             return jsonify({'error': 'Failed to save face crop'}), 500
         
         logger.info(f"Saved face crop to: {filepath}")
+        logger.info(f"Face crop dimensions: {face_crop.shape}")
+        
+        # Verify the saved image can be read and has a face
+        test_img = cv2.imread(filepath)
+        if test_img is None:
+            logger.error(f"Saved image cannot be read back: {filepath}")
+            return jsonify({'error': 'Saved image is corrupted'}), 500
+        
+        logger.info(f"Test read image dimensions: {test_img.shape}")
+        
+        # Test face detection on the saved image
+        test_img_rgb = cv2.cvtColor(test_img, cv2.COLOR_BGR2RGB)
+        test_faces = face_system.app.get(test_img_rgb)
+        logger.info(f"Face detection test on saved image found {len(test_faces)} faces")
+        
+        if len(test_faces) == 0:
+            logger.error(f"No faces detected in saved image: {filepath}")
+            # Don't delete the file, just return error
+            return jsonify({'error': 'No faces detected in the cropped image'}), 500
         
         # Add to face system with detailed logging
         db_success = False
