@@ -1042,68 +1042,96 @@
 
         // Show modal for unknown faces
         function showUnknownFacesModal(unknownFaces) {
-            let modalHtml = `
-                <div class="modal fade" id="unknownFacesModal" tabindex="-1">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Unknown Faces Detected</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p>Found ${unknownFaces.length} unknown face(s). Select a face to add as a student:</p>
-                                <div class="row">
-            `;
-            
-            unknownFaces.forEach((face, index) => {
-                modalHtml += `
-                    <div class="col-md-6 mb-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6>Face ${index + 1}</h6>
-                                <p class="text-muted">Confidence: ${(face.confidence * 100).toFixed(1)}%</p>
-                                <button class="btn btn-primary btn-sm" onclick="addFaceAsStudent(${face.index})">
-                                    <i class="fas fa-user-plus"></i> Add as Student
-                                </button>
+            // First, load existing students for the dropdown
+            loadStudentsForDropdown().then(existingStudents => {
+                let modalHtml = `
+                    <div class="modal fade" id="unknownFacesModal" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Unknown Faces Detected</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p>Found ${unknownFaces.length} unknown face(s). Each face is labeled on the video feed.</p>
+                                    <div class="row">
+                `;
+                
+                unknownFaces.forEach((face, index) => {
+                    modalHtml += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6>Face #${index + 1} (Unknown #${index + 1} on video)</h6>
+                                    <p class="text-muted">Confidence: ${(face.confidence * 100).toFixed(1)}%</p>
+                                    <div class="mb-2">
+                                        <label class="form-label">Student:</label>
+                                        <select class="form-select" id="studentSelect_${face.index}">
+                                            <option value="">-- Select existing student or type new name --</option>
+                                            ${existingStudents.map(student => 
+                                                `<option value="${student}">${student}</option>`
+                                            ).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label">Or enter new student name:</label>
+                                        <input type="text" class="form-control" id="newStudentName_${face.index}" 
+                                               placeholder="Enter new student name">
+                                    </div>
+                                    <button class="btn btn-primary btn-sm" onclick="addFaceAsStudent(${face.index})">
+                                        <i class="fas fa-user-plus"></i> Add Face
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `;
-            });
-            
-            modalHtml += `
+                    `;
+                });
+                
+                modalHtml += `
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-        
-`;
 
-            // Remove any existing modal and append the new one
-            const existingModal = document.getElementById('unknownFacesModal');
-            if (existingModal) existingModal.remove();
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
+                `;
 
-            // Show the modal
-            const modal = new bootstrap.Modal(document.getElementById('unknownFacesModal'));
-            modal.show();
+                // Remove any existing modal and append the new one
+                const existingModal = document.getElementById('unknownFacesModal');
+                if (existingModal) existingModal.remove();
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+                // Show the modal
+                const modal = new bootstrap.Modal(document.getElementById('unknownFacesModal'));
+                modal.show();
+            });
         }
 
-        // Add a face as a student (show prompt for new/existing student)
-        function addFaceAsStudent(faceIndex) {
-            let studentName = prompt('Enter the student name (or select an existing student):');
-            if (!studentName) return;
-
-            // Optionally, you could provide a dropdown of existing students here
-
-            // Ask if this is a new student or adding to existing
-            let isNew = confirm('Is this a new student? Click OK for new, Cancel to add to existing.');
-            saveFacePhoto(faceIndex, studentName, isNew);
+        // Helper to load students for dropdown
+        async function loadStudentsForDropdown() {
+            try {
+                const response = await fetch('/api/students');
+                const data = await response.json();
+                return data.students || [];
+            } catch (error) {
+                return [];
+            }
         }
 
-        // Save the cropped face photo and add to database
-        async function saveFacePhoto(faceIndex, studentName, isNewStudent) {
+        // Add a face as a student (uses dropdown or text input)
+        async function addFaceAsStudent(faceIndex) {
+            // Prefer dropdown if selected, otherwise use text input
+            const select = document.getElementById(`studentSelect_${faceIndex}`);
+            const input = document.getElementById(`newStudentName_${faceIndex}`);
+            let studentName = select.value || input.value.trim();
+            if (!studentName) {
+                showAlert('danger', 'Please select or enter a student name.');
+                return;
+            }
+
+            // Always treat as "add to existing" if dropdown is used, otherwise as new if text input is used
+            const isNewStudent = !select.value;
+
             try {
                 const response = await fetch('/api/save-face-photo', {
                     method: 'POST',

@@ -457,7 +457,7 @@ def video_feed():
             if detection_active and face_system:
                 faces = face_system.detect_faces(frame)
                 
-                for face in faces:
+                for i, face in enumerate(faces):
                     bbox = face['bbox']
                     x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
                     
@@ -470,7 +470,9 @@ def video_feed():
                         label = f"{face['student_name']} ({face['confidence']:.2f})"
                         cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                     else:
-                        cv2.putText(frame, "Unknown", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        # Show face index for unknown faces
+                        label = f"Unknown #{i+1}"
+                        cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
             # Encode frame
             ret, buffer = cv2.imencode('.jpg', frame)
