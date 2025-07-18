@@ -24,6 +24,7 @@ CORS(app)
 face_system = None
 attendance_manager = None
 camera = None
+capture_camera = None  # Separate camera for photo capture
 detection_active = False
 detection_thread = None
 unknown_faces = {}  # Track unknown faces: {face_id: {embedding, bbox, first_seen, last_seen, detection_count}}
@@ -142,6 +143,25 @@ def release_camera():
         camera.release()
         camera = None
 
+def get_capture_camera():
+    """Get a separate camera instance for photo capture"""
+    global capture_camera
+    if capture_camera is None:
+        capture_camera = cv2.VideoCapture(0)
+        # Higher resolution for better photo quality
+        capture_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        capture_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        capture_camera.set(cv2.CAP_PROP_FPS, 30)
+        capture_camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    return capture_camera
+
+def release_capture_camera():
+    """Release capture camera resources"""
+    global capture_camera
+    if capture_camera is not None:
+        capture_camera.release()
+        capture_camera = None
+
 def detection_loop():
     """Detection loop with smart rotating face sampling and unknown face tracking"""
     global detection_active, face_system, attendance_manager, face_sampling_manager, unknown_faces
@@ -196,7 +216,8 @@ def track_unknown_face(face):
     global unknown_faces
     
     # Create a unique ID for this face based on its position and embedding
-    face_id = hash(str(face['bbox']) + str(face['embedding'][:10]))  # Use first 10 values of embedding
+    # Use a more stable ID generation method
+    face_id = str(hash(str(face['bbox']) + str(face['embedding'][:10])))
     current_time = time.time()
     
     if face_id in unknown_faces:
@@ -527,6 +548,31 @@ def video_feed():
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/capture_feed')
+def capture_feed():
+    """Video streaming route for photo capture"""
+    def generate():
+        camera = get_capture_camera()
+        if not camera.isOpened():
+            logger.error("Failed to open capture camera")
+            return
+        
+        while True:
+            ret, frame = camera.read()
+            if not ret:
+                break
+            
+            # Encode frame
+            ret, buffer = cv2.imencode('.jpg', frame)
+            if not ret:
+                continue
+            
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 @app.route('/api/unknown-faces')
 def get_unknown_faces():
     """Get list of currently tracked unknown faces"""
@@ -555,6 +601,7 @@ def add_unknown_face():
         data = request.json
         face_id = data.get('face_id')
         student_name = data.get('student_name')
+        photo_path = data.get('photo_path')  # Optional photo path
         
         if not face_id or not student_name:
             return jsonify({'error': 'Face ID and student name are required'}), 400
@@ -565,8 +612,12 @@ def add_unknown_face():
         # Get the face data
         face_data = unknown_faces[face_id]
         
-        # Add to face system
-        success = face_system.add_student_with_embedding(student_name, face_data['embedding'])
+        if photo_path and os.path.exists(photo_path):
+            # Add student with photo
+            success = face_system.add_student(student_name, photo_path)
+        else:
+            # Add student with embedding only
+            success = face_system.add_student_with_embedding(student_name, face_data['embedding'])
         
         if success:
             # Remove from unknown faces
@@ -601,6 +652,39 @@ def remove_unknown_face():
         logger.error(f"Error removing unknown face: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/capture-photo', methods=['POST'])
+def capture_photo():
+    """Capture a photo from the capture camera"""
+    try:
+        camera = get_capture_camera()
+        if not camera.isOpened():
+            return jsonify({'error': 'Failed to open camera'}), 500
+        
+        ret, frame = camera.read()
+        if not ret:
+            return jsonify({'error': 'Failed to capture photo'}), 500
+        
+        # Generate unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"capture_{timestamp}.jpg"
+        filepath = os.path.join("students", "temp", filename)
+        
+        # Ensure temp directory exists
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        
+        # Save the photo
+        cv2.imwrite(filepath, frame)
+        
+        return jsonify({
+            'success': True,
+            'filepath': filepath,
+            'filename': filename
+        })
+        
+    except Exception as e:
+        logger.error(f"Error capturing photo: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Not found'}), 404
@@ -618,6 +702,7 @@ if __name__ == '__main__':
     try:
         # Create necessary directories
         os.makedirs("students", exist_ok=True)
+        os.makedirs("students/temp", exist_ok=True)  # For temporary photo captures
         os.makedirs("attendance_logs", exist_ok=True)
         
         logger.info("Starting Flask application...")
@@ -626,4 +711,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        release_camera() 
+        release_camera()
+        release_capture_camera() 
