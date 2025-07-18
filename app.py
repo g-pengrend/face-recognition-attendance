@@ -26,6 +26,7 @@ attendance_manager = None
 camera = None
 detection_active = False
 detection_thread = None
+unknown_faces = {}  # Track unknown faces: {face_id: {embedding, bbox, first_seen, last_seen, detection_count}}
 
 class FaceSamplingManager:
     def __init__(self, batch_size=5, batch_interval=2.0):
@@ -142,15 +143,15 @@ def release_camera():
         camera = None
 
 def detection_loop():
-    """Detection loop with smart rotating face sampling"""
-    global detection_active, face_system, attendance_manager, face_sampling_manager
+    """Detection loop with smart rotating face sampling and unknown face tracking"""
+    global detection_active, face_system, attendance_manager, face_sampling_manager, unknown_faces
     
     camera = get_camera()
     if not camera.isOpened():
         logger.error("Failed to open camera")
         return
     
-    logger.info("Starting detection loop with smart face sampling")
+    logger.info("Starting detection loop with smart face sampling and unknown face tracking")
     
     while detection_active:
         ret, frame = camera.read()
@@ -169,6 +170,7 @@ def detection_loop():
             # Process the current batch
             for face in current_batch:
                 if face['student_name'] and face['confidence'] >= 0.6:
+                    # Known face - mark attendance
                     success = attendance_manager.mark_attendance(
                         face['student_name'], 
                         face['confidence']
@@ -177,6 +179,9 @@ def detection_loop():
                         logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
                     else:
                         logger.warning(f"Failed to mark attendance for {face['student_name']}")
+                else:
+                    # Unknown face - track it
+                    track_unknown_face(face)
             
             time.sleep(0.2)
             
@@ -185,6 +190,52 @@ def detection_loop():
             time.sleep(0.1)
     
     logger.info("Detection loop stopped")
+
+def track_unknown_face(face):
+    """Track unknown faces for potential addition to database"""
+    global unknown_faces
+    
+    # Create a unique ID for this face based on its position and embedding
+    face_id = hash(str(face['bbox']) + str(face['embedding'][:10]))  # Use first 10 values of embedding
+    current_time = time.time()
+    
+    if face_id in unknown_faces:
+        # Update existing unknown face
+        unknown_faces[face_id]['last_seen'] = current_time
+        unknown_faces[face_id]['detection_count'] += 1
+        # Update bbox if this detection is more confident
+        if face.get('confidence', 0) > unknown_faces[face_id].get('confidence', 0):
+            unknown_faces[face_id]['bbox'] = face['bbox']
+            unknown_faces[face_id]['confidence'] = face.get('confidence', 0)
+    else:
+        # New unknown face
+        unknown_faces[face_id] = {
+            'embedding': face['embedding'],
+            'bbox': face['bbox'],
+            'first_seen': current_time,
+            'last_seen': current_time,
+            'detection_count': 1,
+            'confidence': face.get('confidence', 0)
+        }
+        logger.info(f"New unknown face detected (ID: {face_id})")
+    
+    # Clean up old unknown faces (older than 5 minutes)
+    cleanup_old_unknown_faces()
+
+def cleanup_old_unknown_faces():
+    """Remove unknown faces that haven't been seen recently"""
+    global unknown_faces
+    
+    current_time = time.time()
+    old_faces = []
+    
+    for face_id, face_data in unknown_faces.items():
+        if current_time - face_data['last_seen'] > 300:  # 5 minutes
+            old_faces.append(face_id)
+    
+    for face_id in old_faces:
+        del unknown_faces[face_id]
+        logger.info(f"Removed old unknown face (ID: {face_id})")
 
 @app.route('/')
 def index():
@@ -475,6 +526,80 @@ def video_feed():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/api/unknown-faces')
+def get_unknown_faces():
+    """Get list of currently tracked unknown faces"""
+    global unknown_faces
+    
+    # Convert to serializable format
+    serializable_faces = {}
+    for face_id, face_data in unknown_faces.items():
+        serializable_faces[str(face_id)] = {
+            'embedding': convert_numpy_types(face_data['embedding']),
+            'bbox': convert_numpy_types(face_data['bbox']),
+            'first_seen': face_data['first_seen'],
+            'last_seen': face_data['last_seen'],
+            'detection_count': face_data['detection_count'],
+            'confidence': face_data.get('confidence', 0)
+        }
+    
+    return jsonify({'unknown_faces': serializable_faces})
+
+@app.route('/api/add-unknown-face', methods=['POST'])
+def add_unknown_face():
+    """Add an unknown face to the database as a new student"""
+    global face_system, unknown_faces
+    
+    try:
+        data = request.json
+        face_id = data.get('face_id')
+        student_name = data.get('student_name')
+        
+        if not face_id or not student_name:
+            return jsonify({'error': 'Face ID and student name are required'}), 400
+        
+        if face_id not in unknown_faces:
+            return jsonify({'error': 'Unknown face not found'}), 404
+        
+        # Get the face data
+        face_data = unknown_faces[face_id]
+        
+        # Add to face system
+        success = face_system.add_student_with_embedding(student_name, face_data['embedding'])
+        
+        if success:
+            # Remove from unknown faces
+            del unknown_faces[face_id]
+            return jsonify({'success': True, 'message': f'Student {student_name} added successfully'})
+        else:
+            return jsonify({'error': 'Failed to add student to face system'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error adding unknown face: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/remove-unknown-face', methods=['POST'])
+def remove_unknown_face():
+    """Remove an unknown face from tracking"""
+    global unknown_faces
+    
+    try:
+        data = request.json
+        face_id = data.get('face_id')
+        
+        if not face_id:
+            return jsonify({'error': 'Face ID is required'}), 400
+        
+        if face_id in unknown_faces:
+            del unknown_faces[face_id]
+            return jsonify({'success': True, 'message': 'Unknown face removed'})
+        else:
+            return jsonify({'error': 'Unknown face not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error removing unknown face: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(404)
 def not_found(error):

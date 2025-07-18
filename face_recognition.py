@@ -359,3 +359,33 @@ class FaceRecognitionSystem:
         except Exception as e:
             self.logger.error(f"Error loading database: {e}")
             return False 
+
+    def add_student_with_embedding(self, name: str, embedding: np.ndarray):
+        """
+        Add a student directly with an embedding (for unknown faces)
+        
+        Args:
+            name (str): Name of the student
+            embedding (np.ndarray): Face embedding
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Create student folder if it doesn't exist
+            student_folder = os.path.join(self.students_folder, name)
+            os.makedirs(student_folder, exist_ok=True)
+            
+            # Store the embedding
+            self.students_db[name] = {
+                'embeddings': [embedding],
+                'image_paths': [],  # No image file for now
+                'primary_embedding': embedding
+            }
+            
+            self.logger.info(f"Added student {name} with embedding (no image file)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error adding student {name} with embedding: {e}")
+            return False 
