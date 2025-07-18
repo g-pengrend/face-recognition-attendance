@@ -547,20 +547,35 @@ def capture_screenshot():
                 bbox = face['bbox']
                 x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
                 
-                # Draw red bounding box
+                # Calculate expanded bounding box for visualization
+                face_width = x2 - x1
+                face_height = y2 - y1
+                expand_x = int(face_width * 0.5)
+                expand_y = int(face_height * 0.5)
+                
+                height, width = captured_frame.shape[:2]
+                new_x1 = max(0, x1 - expand_x)
+                new_y1 = max(0, y1 - expand_y)
+                new_x2 = min(width, x2 + expand_x)
+                new_y2 = min(height, y2 + expand_y)
+                
+                # Draw expanded bounding box (dashed line)
+                cv2.rectangle(screenshot, (new_x1, new_y1), (new_x2, new_y2), (255, 0, 0), 2)
+                
+                # Draw original bounding box (solid line)
                 cv2.rectangle(screenshot, (x1, y1), (x2, y2), (0, 0, 255), 3)
                 
-                # Draw face number (unknown_face_index + 1)
+                # Draw face number
                 label = f"Unknown #{unknown_face_index + 1}"
                 cv2.putText(screenshot, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
-                # Crop the face for thumbnail
-                face_crop = captured_frame[y1:y2, x1:x2]
+                # Crop the expanded face for thumbnail
+                face_crop = captured_frame[new_y1:new_y2, new_x1:new_x2]
                 if face_crop.size > 0:
                     # Save thumbnail
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     thumbnail_filename = f"thumbnail_{timestamp}_{unknown_face_index}.jpg"
-                    thumbnail_path = os.path.join("temp", thumbnail_filename)  # Changed to root temp
+                    thumbnail_path = os.path.join("temp", thumbnail_filename)
                     
                     # Ensure temp directory exists
                     os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
@@ -584,7 +599,7 @@ def capture_screenshot():
         # Save screenshot with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         screenshot_filename = f"screenshot_{timestamp}.jpg"
-        screenshot_path = os.path.join("temp", screenshot_filename)  # Changed to root temp
+        screenshot_path = os.path.join("temp", screenshot_filename)
         
         # Ensure temp directory exists
         os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
@@ -630,11 +645,30 @@ def save_face_photo():
         bbox = face['bbox']
         x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
         
-        # Crop the face from the captured frame
-        face_crop = captured_frame[y1:y2, x1:x2]
+        # Expand the bounding box to include more context
+        height, width = captured_frame.shape[:2]
+        face_width = x2 - x1
+        face_height = y2 - y1
+        
+        # Expand by 50% on each side
+        expand_x = int(face_width * 0.5)
+        expand_y = int(face_height * 0.5)
+        
+        # Calculate expanded coordinates with bounds checking
+        new_x1 = max(0, x1 - expand_x)
+        new_y1 = max(0, y1 - expand_y)
+        new_x2 = min(width, x2 + expand_x)
+        new_y2 = min(height, y2 + expand_y)
+        
+        # Crop the expanded face from the captured frame
+        face_crop = captured_frame[new_y1:new_y2, new_x1:new_x2]
         
         if face_crop.size == 0:
             return jsonify({'error': 'Invalid face crop'}), 400
+        
+        logger.info(f"Original bbox: ({x1}, {y1}, {x2}, {y2})")
+        logger.info(f"Expanded bbox: ({new_x1}, {new_y1}, {new_x2}, {new_y2})")
+        logger.info(f"Face crop dimensions: {face_crop.shape}")
         
         # Create student folder
         student_folder = os.path.join('students', student_name)
@@ -651,7 +685,6 @@ def save_face_photo():
             return jsonify({'error': 'Failed to save face crop'}), 500
         
         logger.info(f"Saved face crop to: {filepath}")
-        logger.info(f"Face crop dimensions: {face_crop.shape}")
         
         # Verify the saved image can be read and has a face
         test_img = cv2.imread(filepath)
