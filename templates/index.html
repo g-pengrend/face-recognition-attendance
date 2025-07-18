@@ -240,53 +240,25 @@
 
                 <!-- Tab Contents -->
                 <div class="tab-content" id="mainTabContent">
-                    <!-- Live Detection Tab -->
-                    <div class="tab-pane fade show active" id="live" role="tabpanel">
+                    <!-- Detection Tab -->
+                    <div class="tab-pane fade show active" id="detection" role="tabpanel">
                         <div class="row">
-                            <div class="col-lg-8">
+                            <div class="col-md-8">
                                 <div class="video-container">
-                                    <img src="/video_feed" class="video-feed" alt="Live Video Feed">
+                                    <img src="/video_feed" class="video-feed" alt="Video Feed" id="videoFeed">
+                                </div>
+                                <div class="d-grid gap-2 mt-2">
+                                    <button class="btn btn-primary" onclick="captureCurrentFrame()">
+                                        <i class="fas fa-camera"></i> Capture Unknown Faces
+                                    </button>
                                 </div>
                             </div>
-                            <div class="col-lg-4">
-                                <div class="control-panel">
-                                    <h4><i class="fas fa-cogs"></i> Controls</h4>
-                                    <div class="mb-3">
-                                        <label for="sessionName" class="form-label">Session Name (Optional)</label>
-                                        <input type="text" class="form-control" id="sessionName" placeholder="Enter session name">
+                            <div class="col-md-4">
+                                <div class="attendance-card">
+                                    <h6><i class="fas fa-user-check"></i> Live Attendance</h6>
+                                    <div id="liveAttendanceList">
+                                        <p class="text-muted">No students detected yet.</p>
                                     </div>
-                                    <div class="mb-3">
-                                        <label for="sessionStartTime" class="form-label">Class Start Time</label>
-                                        <input type="datetime-local" class="form-control" id="sessionStartTime">
-                                    </div>
-                                    <div class="d-grid gap-2">
-                                        <button class="btn btn-start btn-custom" id="startBtn" onclick="startDetection()">
-                                            <i class="fas fa-play"></i> Start Detection
-                                        </button>
-                                        <button class="btn btn-stop btn-custom" id="stopBtn" onclick="stopDetection()" disabled>
-                                            <i class="fas fa-stop"></i> Stop Detection
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="stats-card">
-                                    <div class="stats-number" id="presentCount">0</div>
-                                    <div>Students Present</div>
-                                </div>
-
-                                <div class="stats-card">
-                                    <div class="stats-number" id="totalStudents">0</div>
-                                    <div>Total Students</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Live Attendance Feed -->
-                        <div class="col-lg-4">
-                            <div class="live-attendance" id="liveAttendanceFeed">
-                                <h5>Live Attendance</h5>
-                                <div id="liveAttendanceList">
-                                    <p class="text-muted">No students detected yet.</p>
                                 </div>
                             </div>
                         </div>
@@ -1149,6 +1121,112 @@
                 }
             } catch (error) {
                 showAlert('danger', 'Error removing unknown face: ' + error.message);
+            }
+        }
+
+        // Capture current frame and detect unknown faces
+        async function captureCurrentFrame() {
+            try {
+                const response = await fetch('/api/capture-current-frame', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.unknown_faces.length > 0) {
+                        showUnknownFacesModal(result.unknown_faces);
+                    } else {
+                        showAlert('info', 'No unknown faces detected in the current frame.');
+                    }
+                } else {
+                    showAlert('danger', result.error || 'Failed to capture frame.');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error capturing frame: ' + error.message);
+            }
+        }
+
+        // Show modal for unknown faces
+        function showUnknownFacesModal(unknownFaces) {
+            let modalHtml = `
+                <div class="modal fade" id="unknownFacesModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Unknown Faces Detected</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Found ${unknownFaces.length} unknown face(s). Select a face to add as a student:</p>
+                                <div class="row">
+            `;
+            
+            unknownFaces.forEach((face, index) => {
+                modalHtml += `
+                    <div class="col-md-6 mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Face ${index + 1}</h6>
+                                <p class="text-muted">Confidence: ${(face.confidence * 100).toFixed(1)}%</p>
+                                <button class="btn btn-primary btn-sm" onclick="addFaceAsStudent(${face.index})">
+                                    <i class="fas fa-user-plus"></i> Add as Student
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            modalHtml += `
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        
+`;
+
+            // Remove any existing modal and append the new one
+            const existingModal = document.getElementById('unknownFacesModal');
+            if (existingModal) existingModal.remove();
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('unknownFacesModal'));
+            modal.show();
+        }
+
+        // Add a face as a student (show prompt for new/existing student)
+        function addFaceAsStudent(faceIndex) {
+            let studentName = prompt('Enter the student name (or select an existing student):');
+            if (!studentName) return;
+
+            // Optionally, you could provide a dropdown of existing students here
+
+            // Ask if this is a new student or adding to existing
+            let isNew = confirm('Is this a new student? Click OK for new, Cancel to add to existing.');
+            saveFacePhoto(faceIndex, studentName, isNew);
+        }
+
+        // Save the cropped face photo and add to database
+        async function saveFacePhoto(faceIndex, studentName, isNewStudent) {
+            try {
+                const response = await fetch('/api/save-face-photo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        face_index: faceIndex,
+                        student_name: studentName,
+                        is_new_student: isNewStudent
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showAlert('success', result.message || 'Face photo saved!');
+                    loadStudents();
+                } else {
+                    showAlert('danger', result.error || 'Failed to save face photo.');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error saving face photo: ' + error.message);
             }
         }
     </script>

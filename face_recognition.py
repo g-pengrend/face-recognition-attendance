@@ -389,3 +389,52 @@ class FaceRecognitionSystem:
         except Exception as e:
             self.logger.error(f"Error adding student {name} with embedding: {e}")
             return False 
+
+    def add_image_to_student(self, student_name: str, image_path: str):
+        """
+        Add an additional image to an existing student
+        
+        Args:
+            student_name (str): Name of the existing student
+            image_path (str): Path to the new image
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if student_name not in self.students_db:
+                return False
+            
+            # Load and process the new image
+            img = cv2.imread(image_path)
+            if img is None:
+                return False
+            
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            faces = self.app.get(img_rgb)
+            
+            if len(faces) == 0:
+                return False
+            
+            # Use the best quality face
+            best_face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+            
+            # Add to existing student's embeddings
+            if 'embeddings' in self.students_db[student_name]:
+                self.students_db[student_name]['embeddings'].append(best_face.embedding)
+                self.students_db[student_name]['image_paths'].append(image_path)
+            else:
+                # Convert single embedding to multiple embeddings format
+                old_data = self.students_db[student_name]
+                self.students_db[student_name] = {
+                    'embeddings': [old_data['embedding'], best_face.embedding],
+                    'image_paths': [old_data.get('image_path', ''), image_path],
+                    'primary_embedding': old_data['embedding']
+                }
+            
+            self.logger.info(f"Added image to existing student: {student_name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error adding image to student {student_name}: {e}")
+            return False 

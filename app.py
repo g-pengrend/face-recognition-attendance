@@ -24,10 +24,10 @@ CORS(app)
 face_system = None
 attendance_manager = None
 camera = None
-capture_camera = None  # Separate camera for photo capture
 detection_active = False
 detection_thread = None
-unknown_faces = {}  # Track unknown faces: {face_id: {embedding, bbox, first_seen, last_seen, detection_count}}
+current_frame = None  # Store current frame for photo capture
+current_faces = []    # Store current detected faces for photo capture
 
 class FaceSamplingManager:
     def __init__(self, batch_size=5, batch_interval=2.0):
@@ -143,35 +143,16 @@ def release_camera():
         camera.release()
         camera = None
 
-def get_capture_camera():
-    """Get a separate camera instance for photo capture"""
-    global capture_camera
-    if capture_camera is None:
-        capture_camera = cv2.VideoCapture(0)
-        # Higher resolution for better photo quality
-        capture_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        capture_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        capture_camera.set(cv2.CAP_PROP_FPS, 30)
-        capture_camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    return capture_camera
-
-def release_capture_camera():
-    """Release capture camera resources"""
-    global capture_camera
-    if capture_camera is not None:
-        capture_camera.release()
-        capture_camera = None
-
 def detection_loop():
-    """Detection loop with smart rotating face sampling and unknown face tracking"""
-    global detection_active, face_system, attendance_manager, face_sampling_manager, unknown_faces
+    """Detection loop with smart rotating face sampling"""
+    global detection_active, face_system, attendance_manager, face_sampling_manager, current_frame, current_faces
     
     camera = get_camera()
     if not camera.isOpened():
         logger.error("Failed to open camera")
         return
     
-    logger.info("Starting detection loop with smart face sampling and unknown face tracking")
+    logger.info("Starting detection loop with smart face sampling")
     
     while detection_active:
         ret, frame = camera.read()
@@ -181,8 +162,12 @@ def detection_loop():
             continue
         
         try:
+            # Store current frame for photo capture
+            current_frame = frame.copy()
+            
             # Detect all faces in the frame
             all_faces = face_system.detect_faces(frame)
+            current_faces = all_faces  # Store for photo capture
             
             # Get the next batch of faces to process
             current_batch = face_sampling_manager.get_next_batch(all_faces)
@@ -199,9 +184,6 @@ def detection_loop():
                         logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
                     else:
                         logger.warning(f"Failed to mark attendance for {face['student_name']}")
-                else:
-                    # Unknown face - track it
-                    track_unknown_face(face)
             
             time.sleep(0.2)
             
@@ -210,53 +192,6 @@ def detection_loop():
             time.sleep(0.1)
     
     logger.info("Detection loop stopped")
-
-def track_unknown_face(face):
-    """Track unknown faces for potential addition to database"""
-    global unknown_faces
-    
-    # Create a unique ID for this face based on its position and embedding
-    # Use a more stable ID generation method
-    face_id = str(hash(str(face['bbox']) + str(face['embedding'][:10])))
-    current_time = time.time()
-    
-    if face_id in unknown_faces:
-        # Update existing unknown face
-        unknown_faces[face_id]['last_seen'] = current_time
-        unknown_faces[face_id]['detection_count'] += 1
-        # Update bbox if this detection is more confident
-        if face.get('confidence', 0) > unknown_faces[face_id].get('confidence', 0):
-            unknown_faces[face_id]['bbox'] = face['bbox']
-            unknown_faces[face_id]['confidence'] = face.get('confidence', 0)
-    else:
-        # New unknown face
-        unknown_faces[face_id] = {
-            'embedding': face['embedding'],
-            'bbox': face['bbox'],
-            'first_seen': current_time,
-            'last_seen': current_time,
-            'detection_count': 1,
-            'confidence': face.get('confidence', 0)
-        }
-        logger.info(f"New unknown face detected (ID: {face_id})")
-    
-    # Clean up old unknown faces (older than 5 minutes)
-    cleanup_old_unknown_faces()
-
-def cleanup_old_unknown_faces():
-    """Remove unknown faces that haven't been seen recently"""
-    global unknown_faces
-    
-    current_time = time.time()
-    old_faces = []
-    
-    for face_id, face_data in unknown_faces.items():
-        if current_time - face_data['last_seen'] > 300:  # 5 minutes
-            old_faces.append(face_id)
-    
-    for face_id in old_faces:
-        del unknown_faces[face_id]
-        logger.info(f"Removed old unknown face (ID: {face_id})")
 
 @app.route('/')
 def index():
@@ -305,10 +240,10 @@ def start_detection():
     try:
         # Get session details from request
         session_name = request.json.get('session_name')
-        session_start_time = request.json.get('session_start_time')  # <-- ADD THIS LINE
+        session_start_time = request.json.get('session_start_time')
         
         # Start attendance session with start time
-        session_id = attendance_manager.start_session(session_name, session_start_time)  # <-- PASS session_start_time
+        session_id = attendance_manager.start_session(session_name, session_start_time)
         
         # Set total students count
         total_students = len(face_system.get_students_list())
@@ -548,141 +483,102 @@ def video_feed():
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/capture_feed')
-def capture_feed():
-    """Video streaming route for photo capture"""
-    def generate():
-        camera = get_capture_camera()
-        if not camera.isOpened():
-            logger.error("Failed to open capture camera")
-            return
-        
-        while True:
-            ret, frame = camera.read()
-            if not ret:
-                break
-            
-            # Encode frame
-            ret, buffer = cv2.imencode('.jpg', frame)
-            if not ret:
-                continue
-            
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-    
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/api/unknown-faces')
-def get_unknown_faces():
-    """Get list of currently tracked unknown faces"""
-    global unknown_faces
-    
-    # Convert to serializable format
-    serializable_faces = {}
-    for face_id, face_data in unknown_faces.items():
-        serializable_faces[str(face_id)] = {
-            'embedding': convert_numpy_types(face_data['embedding']),
-            'bbox': convert_numpy_types(face_data['bbox']),
-            'first_seen': face_data['first_seen'],
-            'last_seen': face_data['last_seen'],
-            'detection_count': face_data['detection_count'],
-            'confidence': face_data.get('confidence', 0)
-        }
-    
-    return jsonify({'unknown_faces': serializable_faces})
-
-@app.route('/api/add-unknown-face', methods=['POST'])
-def add_unknown_face():
-    """Add an unknown face to the database as a new student"""
-    global face_system, unknown_faces
+@app.route('/api/capture-current-frame', methods=['POST'])
+def capture_current_frame():
+    """Capture the current frame and return detected faces"""
+    global current_frame, current_faces, face_system
     
     try:
-        data = request.json
-        face_id = data.get('face_id')
-        student_name = data.get('student_name')
-        photo_path = data.get('photo_path')  # Optional photo path
+        if current_frame is None:
+            return jsonify({'error': 'No frame available'}), 400
         
-        if not face_id or not student_name:
-            return jsonify({'error': 'Face ID and student name are required'}), 400
+        # Get current faces if not already detected
+        if not current_faces and face_system:
+            current_faces = face_system.detect_faces(current_frame)
         
-        if face_id not in unknown_faces:
-            return jsonify({'error': 'Unknown face not found'}), 404
-        
-        # Get the face data
-        face_data = unknown_faces[face_id]
-        
-        if photo_path and os.path.exists(photo_path):
-            # Add student with photo
-            success = face_system.add_student(student_name, photo_path)
-        else:
-            # Add student with embedding only
-            success = face_system.add_student_with_embedding(student_name, face_data['embedding'])
-        
-        if success:
-            # Remove from unknown faces
-            del unknown_faces[face_id]
-            return jsonify({'success': True, 'message': f'Student {student_name} added successfully'})
-        else:
-            return jsonify({'error': 'Failed to add student to face system'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error adding unknown face: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/remove-unknown-face', methods=['POST'])
-def remove_unknown_face():
-    """Remove an unknown face from tracking"""
-    global unknown_faces
-    
-    try:
-        data = request.json
-        face_id = data.get('face_id')
-        
-        if not face_id:
-            return jsonify({'error': 'Face ID is required'}), 400
-        
-        if face_id in unknown_faces:
-            del unknown_faces[face_id]
-            return jsonify({'success': True, 'message': 'Unknown face removed'})
-        else:
-            return jsonify({'error': 'Unknown face not found'}), 404
-            
-    except Exception as e:
-        logger.error(f"Error removing unknown face: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/capture-photo', methods=['POST'])
-def capture_photo():
-    """Capture a photo from the capture camera"""
-    try:
-        camera = get_capture_camera()
-        if not camera.isOpened():
-            return jsonify({'error': 'Failed to open camera'}), 500
-        
-        ret, frame = camera.read()
-        if not ret:
-            return jsonify({'error': 'Failed to capture photo'}), 500
-        
-        # Generate unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"capture_{timestamp}.jpg"
-        filepath = os.path.join("students", "temp", filename)
-        
-        # Ensure temp directory exists
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        # Save the photo
-        cv2.imwrite(filepath, frame)
+        # Filter only unknown faces
+        unknown_faces = []
+        for i, face in enumerate(current_faces):
+            if not face['student_name']:
+                unknown_faces.append({
+                    'index': i,
+                    'bbox': convert_numpy_types(face['bbox']),
+                    'confidence': face.get('confidence', 0),
+                    'embedding': convert_numpy_types(face['embedding'])
+                })
         
         return jsonify({
             'success': True,
-            'filepath': filepath,
-            'filename': filename
+            'unknown_faces': unknown_faces,
+            'total_faces': len(current_faces)
         })
         
     except Exception as e:
-        logger.error(f"Error capturing photo: {e}")
+        logger.error(f"Error capturing current frame: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-face-photo', methods=['POST'])
+def save_face_photo():
+    """Save a cropped face photo and add to student database"""
+    global current_frame, face_system
+    
+    try:
+        data = request.json
+        face_index = data.get('face_index')
+        student_name = data.get('student_name')
+        is_new_student = data.get('is_new_student', True)
+        
+        if current_frame is None:
+            return jsonify({'error': 'No frame available'}), 400
+        
+        # Get current faces
+        current_faces = face_system.detect_faces(current_frame)
+        
+        if face_index >= len(current_faces):
+            return jsonify({'error': 'Face index out of range'}), 400
+        
+        # Get the face data
+        face = current_faces[face_index]
+        bbox = face['bbox']
+        x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+        
+        # Crop the face from the frame
+        face_crop = current_frame[y1:y2, x1:x2]
+        
+        if face_crop.size == 0:
+            return jsonify({'error': 'Invalid face crop'}), 400
+        
+        # Create student folder
+        student_folder = os.path.join('students', student_name)
+        os.makedirs(student_folder, exist_ok=True)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{student_name}_{timestamp}.jpg"
+        filepath = os.path.join(student_folder, filename)
+        
+        # Save the face crop
+        cv2.imwrite(filepath, face_crop)
+        
+        # Add to face system
+        if is_new_student:
+            # Add as new student
+            success = face_system.add_student(student_name, filepath)
+        else:
+            # Add to existing student (multiple images)
+            success = face_system.add_image_to_student(student_name, filepath)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Face photo saved for {student_name}',
+                'filepath': filepath
+            })
+        else:
+            return jsonify({'error': 'Failed to add face to database'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error saving face photo: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(404)
@@ -702,7 +598,6 @@ if __name__ == '__main__':
     try:
         # Create necessary directories
         os.makedirs("students", exist_ok=True)
-        os.makedirs("students/temp", exist_ok=True)  # For temporary photo captures
         os.makedirs("attendance_logs", exist_ok=True)
         
         logger.info("Starting Flask application...")
@@ -711,5 +606,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        release_camera()
-        release_capture_camera() 
+        release_camera() 
