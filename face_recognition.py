@@ -216,7 +216,7 @@ class FaceRecognitionSystem:
                         np.linalg.norm(face_embedding) * np.linalg.norm(embedding)
                     )
                     
-                    if similarity > best_confidence and similarity >= self.threshold:
+                    if similarity > best_confidence and similarity >= self.base_threshold:
                         best_confidence = similarity
                         best_match = student_name
             else:
@@ -225,7 +225,7 @@ class FaceRecognitionSystem:
                     np.linalg.norm(face_embedding) * np.linalg.norm(student_data['embedding'])
                 )
                 
-                if similarity > best_confidence and similarity >= self.threshold:
+                if similarity > best_confidence and similarity >= self.base_threshold:
                     best_confidence = similarity
                     best_match = student_name
         
