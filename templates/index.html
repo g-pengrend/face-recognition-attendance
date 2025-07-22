@@ -231,7 +231,7 @@
                 <!-- Tab Contents -->
                 <div class="tab-content" id="mainTabContent">
                     <!-- Detection Tab -->
-                    <div class="tab-pane fade show active" id="detection" role="tabpanel">
+                    <div class="tab-pane fade show active" id="live" role="tabpanel">
                         <div class="row">
                             <div class="col-md-8">
                                 <!-- Session controls -->
@@ -454,9 +454,15 @@
             // Update status every 5 seconds
             statusUpdateInterval = setInterval(updateStatus, 5000);
             
-            // Update attendance more frequently when on detection tab
+            // Update attendance more frequently when on live detection tab
             setInterval(() => {
-                if (document.getElementById('detection-tab').classList.contains('active')) {
+                // Use the correct tab id: 'live-tab' and tab content id: 'live'
+                const liveTab = document.getElementById('live-tab');
+                const liveTabPane = document.getElementById('live');
+                if (
+                    (liveTab && liveTab.classList.contains('active')) ||
+                    (liveTabPane && liveTabPane.classList.contains('active'))
+                ) {
                     updateAttendanceOnly();
                 }
             }, 2000);
@@ -946,7 +952,7 @@
         // Tab change handler
         document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function (event) {
-                if (event.target.id === 'attendance-tab') {
+                if (event.target.id === 'live-tab') {
                     updateAttendanceOnly(); // Refresh attendance data
                 }
             });
