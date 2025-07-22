@@ -31,72 +31,8 @@ current_faces = []
 captured_frame = None  # Store the frame when screenshot is taken
 captured_faces = []    # Store faces from the captured frame
 
-class FaceSamplingManager:
-    def __init__(self, batch_size=5, batch_interval=2.0):
-        self.batch_size = batch_size
-        self.batch_interval = batch_interval
-        self.last_batch_time = time.time()
-        self.face_history = {}  # Track when each face was last processed
-        self.current_batch = []
-        
-    def get_next_batch(self, detected_faces):
-        """
-        Get the next batch of faces to process, ensuring fair coverage
-        """
-        current_time = time.time()
-        
-        if not detected_faces:
-            return []
-        
-        # Check if it's time to rotate batches
-        if current_time - self.last_batch_time >= self.batch_interval:
-            self._update_batch(detected_faces, current_time)
-            self.last_batch_time = current_time
-        
-        return self.current_batch
-    
-    def _update_batch(self, detected_faces, current_time):
-        """
-        Update the current batch with smart sampling
-        """
-        num_faces = len(detected_faces)
-        
-        if num_faces <= self.batch_size:
-            # Process all faces if we have fewer than batch size
-            self.current_batch = detected_faces
-            return
-        
-        # Calculate priority scores for each face
-        face_scores = []
-        for i, face in enumerate(detected_faces):
-            # Base score: time since last processed (higher = more priority)
-            last_processed = self.face_history.get(i, 0)
-            time_since_last = current_time - last_processed
-            
-            # Bonus score: confidence level
-            confidence_bonus = face.get('confidence', 0) * 10
-            
-            # Bonus score: face size (larger faces get priority)
-            bbox = face.get('bbox', [0, 0, 0, 0])
-            face_size = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-            size_bonus = min(face_size / 1000, 5)  # Cap size bonus
-            
-            total_score = time_since_last + confidence_bonus + size_bonus
-            face_scores.append((total_score, i, face))
-        
-        # Sort by priority score and select top batch_size
-        face_scores.sort(reverse=True)
-        selected_indices = [idx for _, idx, _ in face_scores[:self.batch_size]]
-        
-        # Update current batch and mark faces as processed
-        self.current_batch = [detected_faces[i] for i in selected_indices]
-        for idx in selected_indices:
-            self.face_history[idx] = current_time
-        
-        logger.info(f"Smart batch rotation: {len(self.current_batch)}/{num_faces} faces selected")
-
-# Initialize the sampling manager
-face_sampling_manager = FaceSamplingManager(batch_size=5, batch_interval=2.0)
+# Remove /api/capture-current-frame endpoint and related variables if not used
+# Remove FaceSamplingManager and batch logic if you want a simpler detection loop
 
 def convert_numpy_types(obj):
     """Convert NumPy types to native Python types for JSON serialization"""
@@ -504,40 +440,6 @@ def video_feed():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/api/capture-current-frame', methods=['POST'])
-def capture_current_frame():
-    """Capture the current frame and return detected faces"""
-    global current_frame, current_faces, face_system
-    
-    try:
-        if current_frame is None:
-            return jsonify({'error': 'No frame available'}), 400
-        
-        # Get current faces if not already detected
-        if not current_faces and face_system:
-            current_faces = face_system.detect_faces(current_frame)
-        
-        # Filter only unknown faces
-        unknown_faces = []
-        for i, face in enumerate(current_faces):
-            if not face['student_name']:
-                unknown_faces.append({
-                    'index': i,
-                    'bbox': convert_numpy_types(face['bbox']),
-                    'confidence': face.get('confidence', 0),
-                    'embedding': convert_numpy_types(face['embedding'])
-                })
-        
-        return jsonify({
-            'success': True,
-            'unknown_faces': unknown_faces,
-            'total_faces': len(current_faces)
-        })
-        
-    except Exception as e:
-        logger.error(f"Error capturing current frame: {e}")
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/capture-screenshot', methods=['POST'])
 def capture_screenshot():

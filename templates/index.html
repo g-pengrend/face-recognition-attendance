@@ -1249,23 +1249,7 @@
             }
         }
 
-        // Add this function to debug
-        function debugAttendance() {
-            console.log('Debug: Checking attendance data...');
-            fetch('/api/attendance')
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Debug: Attendance data:', data);
-                    console.log('Debug: Present students:', data.attendance?.attendance);
-                    console.log('Debug: All students:', data.attendance?.all_students);
-                })
-                .catch(error => console.error('Debug: Error fetching attendance:', error));
-        }
-
-        // Call this every 5 seconds for debugging
-        setInterval(debugAttendance, 5000);
-
-        // Improve tab detection logic
+        // Only keep the improved tab polling logic at the end
         setInterval(() => {
             // Check if live tab is active using multiple methods
             const liveTab = document.getElementById('live-tab');
