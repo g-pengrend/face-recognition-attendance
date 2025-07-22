@@ -360,4 +360,82 @@ class FaceRecognitionSystem:
             del self.students_db[name]
             self.logger.info(f"Removed student: {name}")
             return True
-        return False 
+        return False
+    
+    def save_database(self, filepath="students_database.json"):
+        """Save the student database to a JSON file"""
+        try:
+            # Convert numpy arrays to lists for JSON serialization
+            db_to_save = {}
+            for name, data in self.students_db.items():
+                db_to_save[name] = {
+                    'embedding': data['embedding'].tolist(),
+                    'image_path': data['image_path'],
+                    'bbox': data['bbox'].tolist(),
+                    'landmarks': data['landmarks'].tolist()
+                }
+            
+            with open(filepath, 'w') as f:
+                json.dump(db_to_save, f)
+            
+            self.logger.info(f"Database saved to {filepath}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error saving database: {e}")
+            return False
+    
+    def load_database(self, filepath="students_database.json"):
+        """Load the student database from a JSON file"""
+        try:
+            if not os.path.exists(filepath):
+                return False
+            
+            with open(filepath, 'r') as f:
+                db_loaded = json.load(f)
+            
+            # Convert lists back to numpy arrays
+            for name, data in db_loaded.items():
+                self.students_db[name] = {
+                    'embedding': np.array(data['embedding']),
+                    'image_path': data['image_path'],
+                    'bbox': np.array(data['bbox']),
+                    'landmarks': np.array(data['landmarks'])
+                }
+            
+            self.logger.info(f"Database loaded from {filepath}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error loading database: {e}")
+            return False 
+
+    def add_student_with_embedding(self, name: str, embedding: np.ndarray):
+        """
+        Add a student directly with an embedding (for unknown faces)
+        
+        Args:
+            name (str): Name of the student
+            embedding (np.ndarray): Face embedding
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Create student folder if it doesn't exist
+            student_folder = os.path.join(self.students_folder, name)
+            os.makedirs(student_folder, exist_ok=True)
+            
+            # Store the embedding
+            self.students_db[name] = {
+                'embeddings': [embedding],
+                'image_paths': [],  # No image file for now
+                'primary_embedding': embedding
+            }
+            
+            self.logger.info(f"Added student {name} with embedding (no image file)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error adding student {name} with embedding: {e}")
+            return False 
