@@ -25,19 +25,27 @@
         .header {
             background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
             color: white;
-            padding: 20px;
+            padding: 32px 20px 24px 20px;
             border-radius: 20px 20px 0 0;
             text-align: center;
+            margin-bottom: 18px;
         }
-        
+
         .header h1 {
-            font-size: 1.8rem;
-            margin-bottom: 5px;
-        }
-        
-        .header p {
-            font-size: 0.9rem;
+            font-size: 2.2rem;
+            font-weight: 800;
             margin-bottom: 10px;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin-bottom: 22px;
+            margin-top: 0;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.07);
         }
         
         /* Add custom styling for class selector */
@@ -54,6 +62,8 @@
             max-width: 480px;
             margin-left: auto;
             margin-right: auto;
+            margin-top: 18px;
+            margin-bottom: 18px;
         }
 
         .class-label {
@@ -104,14 +114,16 @@
         
         .status-indicator {
             display: inline-block;
-            width: 12px;
-            height: 12px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
             margin-right: 8px;
+            vertical-align: middle;
         }
         
         .status-active {
             background-color: #28a745;
+            box-shadow: 0 0 8px 2px #28a74599;
             animation: pulse 2s infinite;
         }
         
@@ -323,18 +335,18 @@
 
         /* Toast notification styles */
         .attendance-toast {
-            min-width: 320px;
-            max-width: 500px;
+            min-width: 220px;
+            max-width: 400px;
             background: linear-gradient(135deg, #28a745 60%, #20c997 100%);
             color: white;
-            padding: 28px 40px;
-            border-radius: 40px;
-            box-shadow: 0 12px 32px rgba(40,167,69,0.25);
-            font-size: 1.5rem;
-            font-weight: 700;
+            padding: 16px 28px;
+            border-radius: 30px;
+            box-shadow: 0 8px 24px rgba(40,167,69,0.15);
+            font-size: 1.05rem;
+            font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 18px;
+            gap: 12px;
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.3s, transform 0.3s;
@@ -350,14 +362,19 @@
             transform: translateX(-50%) scale(1.05);
         }
         .attendance-toast i {
-            font-size: 2.2rem;
+            font-size: 1.4rem;
         }
         #attendanceToastText {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             display: inline-block;
-            max-width: 320px; /* Adjust as needed */
+            max-width: 250px; /* Adjust as needed */
+        }
+        #statusText {
+            font-size: 1.08rem;
+            font-weight: 600;
+            vertical-align: middle;
         }
     </style>
 </head>
@@ -375,7 +392,10 @@
             <div class="header">
                 <h1><i class="fas fa-user-check"></i> Classroom Attendance System</h1>
                 <p class="mb-0">Real-time face recognition for automatic attendance tracking</p>
-                
+                <div class="mt-3" style="margin-bottom: 10px;">
+                    <span class="status-indicator" id="systemStatus"></span>
+                    <span id="statusText">System Status</span>
+                </div>
                 <!-- Add class selection with better styling -->
                 <div class="class-select-container">
                     <label for="classSelect" class="class-label">
