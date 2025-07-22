@@ -210,10 +210,19 @@ def get_status():
     if attendance_manager:
         current_attendance = attendance_manager.get_current_attendance()
     
+    # Get all students list
+    all_students = []
+    if face_system:
+        all_students = face_system.get_students_list()
+    
+    # Add all_students to current_attendance
+    if current_attendance:
+        current_attendance['all_students'] = all_students
+    
     status = {
         'face_system_ready': face_system is not None and face_system.initialized,
         'detection_active': detection_active,
-        'students_count': len(face_system.get_students_list()) if face_system else 0,
+        'students_count': len(all_students),
         'current_session': convert_numpy_types(current_attendance)
     }
     
@@ -295,12 +304,21 @@ def stop_detection():
 @app.route('/api/attendance')
 def get_attendance():
     """Get current attendance status"""
-    global attendance_manager, detection_active
+    global attendance_manager, detection_active, face_system
     
     if not attendance_manager:
         return jsonify({'detection_active': detection_active, 'attendance': {}}), 200
     
     attendance = attendance_manager.get_current_attendance()
+    
+    # Get all students list
+    all_students = []
+    if face_system:
+        all_students = face_system.get_students_list()
+    
+    # Add all_students to attendance
+    if attendance:
+        attendance['all_students'] = all_students
     
     # Add detection status to response
     response = {

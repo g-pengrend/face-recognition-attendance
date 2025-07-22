@@ -280,7 +280,7 @@
                                 <div class="attendance-card mt-3">
                                     <h6><i class="fas fa-user-times"></i> Not Yet Present</h6>
                                     <div id="absentStudentsList">
-                                        <p class="text-muted">All students present!</p>
+                                        <p class="text-muted">No data.</p>
                                     </div>
                                 </div>
                             </div>
@@ -454,9 +454,9 @@
             // Update status every 5 seconds
             statusUpdateInterval = setInterval(updateStatus, 5000);
             
-            // Update attendance more frequently when on attendance tab
+            // Update attendance more frequently when on detection tab
             setInterval(() => {
-                if (document.getElementById('attendance-tab').classList.contains('active')) {
+                if (document.getElementById('detection-tab').classList.contains('active')) {
                     updateAttendanceOnly();
                 }
             }, 2000);
@@ -467,6 +467,20 @@
                     document.getElementById('singleImageSection').classList.toggle('d-none', this.value !== 'single');
                     document.getElementById('folderUploadSection').classList.toggle('d-none', this.value !== 'folder');
                     document.getElementById('existingFolderSection').classList.toggle('d-none', this.value !== 'existing');
+                });
+            });
+
+            // Fix tab navigation - ensure video feed doesn't interfere
+            document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+                tab.addEventListener('click', function(e) {
+                    // Pause video feed temporarily during tab switch
+                    const videoFeed = document.getElementById('videoFeed');
+                    if (videoFeed) {
+                        videoFeed.style.display = 'none';
+                        setTimeout(() => {
+                            videoFeed.style.display = 'block';
+                        }, 100);
+                    }
                 });
             });
         });
@@ -502,13 +516,9 @@
                     attendance_data: status.current_session.attendance
                 });
                 
-                // Update attendance display if on attendance tab
-                if (document.getElementById('attendance-tab').classList.contains('active')) {
-                    updateAttendanceDisplay(status.current_session);
-                }
-                
                 // Update live attendance feed
                 updateLiveAttendanceFeed(status.current_session);
+                updateAbsentStudentsList(status.current_session);
                 
             } catch (error) {
                 console.error('Error updating status:', error);
@@ -527,7 +537,8 @@
                 presentCount.textContent = data.attendance.present_students || 0;
                 
                 // Update attendance display
-                updateAttendanceDisplay(data.attendance);
+                updateLiveAttendanceFeed(data.attendance);
+                updateAbsentStudentsList(data.attendance);
                 
                 // Debug logging
                 console.log('Attendance update:', {
@@ -863,6 +874,7 @@
                 feedDiv.innerHTML = '<p class="text-muted">No students detected yet.</p>';
                 return;
             }
+            
             let html = '';
             Object.entries(attendance.attendance).forEach(([student, data]) => {
                 let badgeClass = 'badge-on-time';
@@ -884,6 +896,7 @@
                     badgeClass = 'badge-on-time';
                     itemClass = 'unknown';
                 }
+                
                 html += `
                     <div class="student-item ${itemClass}">
                         <div class="d-flex justify-content-between align-items-center">
@@ -1167,19 +1180,47 @@
         // Update absent students list
         function updateAbsentStudentsList(attendance) {
             const absentDiv = document.getElementById('absentStudentsList');
-            if (!attendance || !attendance.attendance) {
+            if (!attendance) {
                 absentDiv.innerHTML = '<p class="text-muted">No data.</p>';
                 return;
             }
-            const allStudents = attendance.all_students || []; // Backend should provide this list!
-            const present = Object.keys(attendance.attendance);
+            
+            // Get all students from the system
+            const allStudents = attendance.all_students || [];
+            const present = attendance.attendance ? Object.keys(attendance.attendance) : [];
             const absent = allStudents.filter(s => !present.includes(s));
+            
             if (absent.length === 0) {
                 absentDiv.innerHTML = '<p class="text-success">All students present!</p>';
             } else {
-                absentDiv.innerHTML = absent.map(s => `<div class="student-item unknown">${s}</div>`).join('');
+                let html = '';
+                absent.forEach(student => {
+                    html += `
+                        <div class="student-item unknown">
+                            <i class="fas fa-user-times text-danger"></i>
+                            <strong>${student}</strong>
+                        </div>
+                    `;
+                });
+                absentDiv.innerHTML = html;
             }
         }
+
+        // Add this function to debug
+        function debugAttendance() {
+            console.log('Debug: Checking attendance data...');
+            fetch('/api/attendance')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Debug: Attendance data:', data);
+                    console.log('Debug: Present students:', data.attendance?.attendance);
+                    console.log('Debug: All students:', data.attendance?.all_students);
+                })
+                .catch(error => console.error('Debug: Error fetching attendance:', error));
+        }
+
+        // Call this every 5 seconds for debugging
+        setInterval(debugAttendance, 5000);
     </script>
 </body>
 </html> 
