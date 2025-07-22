@@ -221,10 +221,23 @@
             <div class="header">
                 <h1><i class="fas fa-user-check"></i> Classroom Attendance System</h1>
                 <p class="mb-0">Real-time face recognition for automatic attendance tracking</p>
-                <div class="mt-2">
-                    <span class="status-indicator" id="systemStatus"></span>
-                    <span id="statusText">System Status</span>
+                
+                <!-- Add class selection -->
+                <div class="row mt-2">
+                    <div class="col-md-6">
+                        <label for="classSelect" class="form-label text-white" style="font-size: 0.9rem;">Select Class:</label>
+                        <select id="classSelect" class="form-select form-select-sm" onchange="changeClass()">
+                            <option value="">Loading classes...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mt-2">
+                            <span class="status-indicator" id="systemStatus"></span>
+                            <span id="statusText">System Status</span>
+                        </div>
+                    </div>
                 </div>
+                
                 <!-- Compact stats display -->
                 <div class="row mt-2">
                     <div class="col-md-6">
@@ -482,6 +495,7 @@
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
+            loadClasses();  // Load classes first
             updateStatus();
             loadStudents();
             loadSessions();
@@ -969,10 +983,80 @@
             alert('Folder selection not implemented in this demo.');
         }
 
+        // Load available classes
+        async function loadClasses() {
+            try {
+                const response = await fetch('/api/classes');
+                const data = await response.json();
+                
+                const classSelect = document.getElementById('classSelect');
+                
+                if (data.classes && data.classes.length > 0) {
+                    let html = '<option value="">Select a class...</option>';
+                    data.classes.forEach(className => {
+                        const selected = className === data.current_class ? 'selected' : '';
+                        html += `<option value="${className}" ${selected}>${className}</option>`;
+                    });
+                    classSelect.innerHTML = html;
+                } else {
+                    classSelect.innerHTML = '<option value="">No classes found</option>';
+                }
+                
+                // If there's a current class, load its students
+                if (data.current_class) {
+                    loadStudents();
+                }
+                
+            } catch (error) {
+                console.error('Error loading classes:', error);
+                document.getElementById('classSelect').innerHTML = '<option value="">Error loading classes</option>';
+            }
+        }
+
+        // Change class
+        async function changeClass() {
+            const classSelect = document.getElementById('classSelect');
+            const selectedClass = classSelect.value;
+            
+            if (!selectedClass) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/set-class', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ class_name: selectedClass })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', result.message);
+                    loadStudents();  // Reload students for the new class
+                    updateStatus();  // Update status with new student count
+                } else {
+                    showAlert('danger', result.error || 'Failed to change class');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error changing class: ' + error.message);
+            }
+        }
+
         // Submit logic
         async function submitAddStudent() {
             const method = document.querySelector('input[name="addMethod"]:checked').value;
+            const currentClass = document.getElementById('classSelect').value;
             let formData = new FormData();
+
+            if (!currentClass) {
+                showAlert('danger', 'Please select a class first.');
+                return;
+            }
+
+            formData.append('class_name', currentClass);
 
             if (method === 'single') {
                 const name = document.getElementById('studentName').value;
@@ -1165,6 +1249,7 @@
 
             // Always treat as "add to existing" if dropdown is used, otherwise as new if text input is used
             const isNewStudent = !select.value;
+            const currentClass = document.getElementById('classSelect').value;
 
             try {
                 const response = await fetch('/api/save-face-photo', {
@@ -1173,7 +1258,8 @@
                     body: JSON.stringify({
                         face_index: faceIndex,
                         student_name: studentName,
-                        is_new_student: isNewStudent
+                        is_new_student: isNewStudent,
+                        class_name: currentClass
                     })
                 });
                 const result = await response.json();

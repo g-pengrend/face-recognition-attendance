@@ -368,6 +368,66 @@ def export_session(session_id):
     
     return send_file(csv_path, as_attachment=True, download_name=f"{session_id}_attendance.csv")
 
+@app.route('/api/classes')
+def get_classes():
+    """Get list of available classes"""
+    global face_system
+    
+    if not face_system:
+        return jsonify({'error': 'Face system not initialized'}), 500
+    
+    classes = face_system.get_available_classes()
+    current_class = face_system.get_current_class()
+    
+    return jsonify({
+        'classes': classes,
+        'current_class': current_class
+    })
+
+@app.route('/api/set-class', methods=['POST'])
+def set_class():
+    """Set the current class and load its students"""
+    global face_system, attendance_manager
+    
+    if not face_system:
+        return jsonify({'error': 'Face system not initialized'}), 500
+    
+    try:
+        data = request.json
+        class_name = data.get('class_name')
+        
+        if not class_name:
+            return jsonify({'error': 'Class name is required'}), 400
+        
+        success = face_system.set_current_class(class_name)
+        if success:
+            # Reset attendance manager for new class
+            if attendance_manager:
+                attendance_manager.end_session()  # End any existing session
+            
+            return jsonify({
+                'success': True,
+                'message': f'Switched to class: {class_name}',
+                'students_count': len(face_system.get_students_list())
+            })
+        else:
+            return jsonify({'error': f'Class {class_name} not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error setting class: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/current-class')
+def get_current_class():
+    """Get the currently selected class"""
+    global face_system
+    
+    if not face_system:
+        return jsonify({'error': 'Face system not initialized'}), 500
+    
+    current_class = face_system.get_current_class()
+    return jsonify({'current_class': current_class})
+
 @app.route('/api/add-student', methods=['POST'])
 def add_student():
     """
@@ -378,19 +438,26 @@ def add_student():
     folder_path = request.form.get('folder_path')
     images = request.files.getlist('images')
     image = request.files.get('image')
+    class_name = request.form.get('class_name')  # Add class name parameter
 
     # Handle single image upload
     if image:
-        save_path = os.path.join('students', folder or '', f"{name}.jpg")
+        if class_name:
+            save_path = os.path.join('students', class_name, folder or '', f"{name}.jpg")
+        else:
+            save_path = os.path.join('students', folder or '', f"{name}.jpg")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         image.save(save_path)
         # Add to face system
-        face_system.add_student(name, save_path)
+        face_system.add_student(name, save_path, class_name)
         return jsonify({'success': True, 'message': f'Student {name} added with single image.'})
 
     # Handle multiple images (folder)
     elif images and folder:
-        folder_dir = os.path.join('students', folder)
+        if class_name:
+            folder_dir = os.path.join('students', class_name, folder)
+        else:
+            folder_dir = os.path.join('students', folder)
         os.makedirs(folder_dir, exist_ok=True)
         image_paths = []
         for i, img in enumerate(images):
@@ -617,6 +684,7 @@ def save_face_photo():
         face_index = data.get('face_index')
         student_name = data.get('student_name')
         is_new_student = data.get('is_new_student', True)
+        class_name = data.get('class_name')  # Add class name parameter
         
         if captured_frame is None:
             return jsonify({'error': 'No captured frame available'}), 400
@@ -654,8 +722,12 @@ def save_face_photo():
         logger.info(f"Expanded bbox: ({new_x1}, {new_y1}, {new_x2}, {new_y2})")
         logger.info(f"Face crop dimensions: {face_crop.shape}")
         
-        # Create student folder
-        student_folder = os.path.join('students', student_name)
+        # Create student folder in the appropriate class
+        if class_name:
+            student_folder = os.path.join('students', class_name, student_name)
+        else:
+            student_folder = os.path.join('students', student_name)
+        
         os.makedirs(student_folder, exist_ok=True)
         
         # Generate filename with timestamp
@@ -694,12 +766,12 @@ def save_face_photo():
             if is_new_student:
                 # Add as new student
                 logger.info(f"Attempting to add new student: {student_name} with file: {filepath}")
-                db_success = face_system.add_student(student_name, filepath)
+                db_success = face_system.add_student(student_name, filepath, class_name)
                 logger.info(f"Result of add_student for {student_name}: {db_success}")
             else:
                 # Add to existing student (multiple images)
                 logger.info(f"Attempting to add image to existing student: {student_name} with file: {filepath}")
-                db_success = face_system.add_image_to_student(student_name, filepath)
+                db_success = face_system.add_image_to_student(student_name, filepath, class_name)
                 logger.info(f"Result of add_image_to_student for {student_name}: {db_success}")
         except Exception as e:
             logger.error(f"Exception in face system add: {e}")

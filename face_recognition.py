@@ -21,6 +21,7 @@ class FaceRecognitionSystem:
             'far': threshold + 0.1       # Stricter for far faces
         }
         self.students_db = {}
+        self.current_class = None  # Add current class tracking
         self.app = None
         self.initialized = False
         
@@ -29,37 +30,50 @@ class FaceRecognitionSystem:
         self.logger = logging.getLogger(__name__)
         
         self._initialize_insightface()
-        self._load_students()
+        # Don't load students initially - wait for class selection
     
-    def _initialize_insightface(self):
-        """Initialize InsightFace with Apple Silicon optimization"""
-        try:
-            # Initialize InsightFace app
-            self.app = FaceAnalysis(name='buffalo_l')
-            self.app.prepare(ctx_id=0, det_size=(640, 640))
-            
-            # For Apple Silicon, we'll use CPU provider with optimizations
-            providers = ['CPUExecutionProvider']
-            
-            self.logger.info("InsightFace initialized successfully")
-            self.initialized = True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize InsightFace: {e}")
-            raise
-    
-    def _load_students(self):
-        """Load student photos and create embeddings from folder structure"""
+    def get_available_classes(self):
+        """Get list of available classes (folders in students directory)"""
         if not os.path.exists(self.students_folder):
-            os.makedirs(self.students_folder)
-            self.logger.info(f"Created students folder: {self.students_folder}")
+            return []
+        
+        classes = []
+        for item in os.listdir(self.students_folder):
+            item_path = os.path.join(self.students_folder, item)
+            if os.path.isdir(item_path):
+                classes.append(item)
+        
+        return sorted(classes)
+    
+    def set_current_class(self, class_name):
+        """Set the current class and load its students"""
+        if class_name not in self.get_available_classes():
+            self.logger.error(f"Class {class_name} not found")
+            return False
+        
+        self.current_class = class_name
+        self.students_db = {}  # Clear existing students
+        self._load_students_for_class(class_name)
+        self.logger.info(f"Switched to class: {class_name}")
+        return True
+    
+    def get_current_class(self):
+        """Get the currently selected class"""
+        return self.current_class
+    
+    def _load_students_for_class(self, class_name):
+        """Load student photos and create embeddings for a specific class"""
+        class_folder = os.path.join(self.students_folder, class_name)
+        
+        if not os.path.exists(class_folder):
+            self.logger.warning(f"Class folder not found: {class_folder}")
             return
         
         supported_formats = ['.jpg', '.jpeg', '.png', '.bmp']
         
-        # Scan for student folders
-        for item in os.listdir(self.students_folder):
-            item_path = os.path.join(self.students_folder, item)
+        # Scan for student folders within the class folder
+        for item in os.listdir(class_folder):
+            item_path = os.path.join(class_folder, item)
             
             if os.path.isdir(item_path):
                 # This is a student folder
@@ -93,8 +107,78 @@ class FaceRecognitionSystem:
                     except Exception as e:
                         self.logger.error(f"Error processing {item}: {e}")
         
-        self.logger.info(f"Loaded {len(self.students_db)} students")
+        self.logger.info(f"Loaded {len(self.students_db)} students for class {class_name}")
 
+    def _load_students(self):
+        """Load student photos and create embeddings from folder structure (legacy method)"""
+        # This method is kept for backward compatibility
+        # It will load from the root students folder if no class is selected
+        if self.current_class:
+            self._load_students_for_class(self.current_class)
+        else:
+            # Legacy behavior - load from root students folder
+            if not os.path.exists(self.students_folder):
+                os.makedirs(self.students_folder)
+                self.logger.info(f"Created students folder: {self.students_folder}")
+                return
+            
+            supported_formats = ['.jpg', '.jpeg', '.png', '.bmp']
+            
+            # Scan for student folders
+            for item in os.listdir(self.students_folder):
+                item_path = os.path.join(self.students_folder, item)
+                
+                if os.path.isdir(item_path):
+                    # This is a student folder
+                    student_name = item
+                    student_images = []
+                    
+                    # Find all images in the student folder
+                    for filename in os.listdir(item_path):
+                        if any(filename.lower().endswith(fmt) for fmt in supported_formats):
+                            image_path = os.path.join(item_path, filename)
+                            student_images.append(image_path)
+                    
+                    if not student_images:
+                        self.logger.warning(f"No images found in student folder: {student_name}")
+                        continue
+                    
+                    # Load the student with multiple images
+                    success = self._load_student_with_multiple_images(student_name, student_images)
+                    if success:
+                        self.logger.info(f"Loaded student: {student_name} with {len(student_images)} images")
+                    else:
+                        self.logger.error(f"Failed to load student: {student_name}")
+                
+                elif os.path.isfile(item_path):
+                    # This is a single image file (backward compatibility)
+                    if any(item.lower().endswith(fmt) for fmt in supported_formats):
+                        student_name = os.path.splitext(item)[0]
+                        try:
+                            self._load_single_student_image(student_name, item_path)
+                            self.logger.info(f"Loaded student: {student_name} (single image)")
+                        except Exception as e:
+                            self.logger.error(f"Error processing {item}: {e}")
+            
+            self.logger.info(f"Loaded {len(self.students_db)} students")
+
+    def _initialize_insightface(self):
+        """Initialize InsightFace with Apple Silicon optimization"""
+        try:
+            # Initialize InsightFace app
+            self.app = FaceAnalysis(name='buffalo_l')
+            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            
+            # For Apple Silicon, we'll use CPU provider with optimizations
+            providers = ['CPUExecutionProvider']
+            
+            self.logger.info("InsightFace initialized successfully")
+            self.initialized = True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize InsightFace: {e}")
+            raise
+    
     def _load_student_with_multiple_images(self, student_name: str, image_paths: List[str]) -> bool:
         """
         Load a student with multiple reference images
@@ -268,9 +352,9 @@ class FaceRecognitionSystem:
         
         return results
     
-    def add_student(self, name, image_path):
+    def add_student(self, name, image_path, class_name=None):
         """
-        Add a new student with a single image
+        Add a new student with a single image to a specific class
         """
         try:
             img = cv2.imread(image_path)
@@ -288,8 +372,12 @@ class FaceRecognitionSystem:
             # Use the best quality face (largest bounding box)
             best_face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
             
-            # Create student folder if it doesn't exist
-            student_folder = os.path.join(self.students_folder, name)
+            # Create student folder in the appropriate class
+            if class_name:
+                student_folder = os.path.join(self.students_folder, class_name, name)
+            else:
+                student_folder = os.path.join(self.students_folder, name)
+            
             os.makedirs(student_folder, exist_ok=True)
             
             # Store the student data
@@ -299,16 +387,16 @@ class FaceRecognitionSystem:
                 'primary_embedding': best_face.embedding
             }
             
-            self.logger.info(f"Added new student: {name}")
+            self.logger.info(f"Added new student: {name} to class: {class_name}")
             return True
             
         except Exception as e:
             self.logger.error(f"Error adding student {name}: {e}")
             return False
 
-    def add_image_to_student(self, student_name: str, image_path: str):
+    def add_image_to_student(self, student_name: str, image_path: str, class_name=None):
         """
-        Add an additional image to an existing student
+        Add an additional image to an existing student in a specific class
         """
         try:
             if student_name not in self.students_db:
