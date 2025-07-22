@@ -205,6 +205,21 @@
                     <span class="status-indicator" id="systemStatus"></span>
                     <span id="statusText">System Status</span>
                 </div>
+                <!-- Add stats display -->
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="stats-card">
+                            <div class="stats-number" id="presentCount">0</div>
+                            <div>Present Students</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="stats-card">
+                            <div class="stats-number" id="totalStudents">0</div>
+                            <div>Total Students</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Main Content -->
@@ -511,15 +526,20 @@
                     statusText.textContent = 'System Error';
                 }
                 
-                // Update counts
-                presentCount.textContent = status.current_session.present_students || 0;
-                totalStudents.textContent = status.students_count || 0;
+                // Update counts if elements exist
+                if (presentCount) {
+                    presentCount.textContent = status.current_session?.present_students || 0;
+                }
+                if (totalStudents) {
+                    totalStudents.textContent = status.students_count || 0;
+                }
                 
                 // Debug logging
                 console.log('Status update:', {
                     detection_active: status.detection_active,
-                    present_students: status.current_session.present_students,
-                    attendance_data: status.current_session.attendance
+                    present_students: status.current_session?.present_students,
+                    attendance_data: status.current_session?.attendance,
+                    all_students: status.current_session?.all_students
                 });
                 
                 // Update live attendance feed
@@ -538,9 +558,15 @@
                 const data = await response.json();
                 
                 const presentCount = document.getElementById('presentCount');
+                const totalStudents = document.getElementById('totalStudents');
                 
-                // Update present count
-                presentCount.textContent = data.attendance.present_students || 0;
+                // Update counts if elements exist
+                if (presentCount) {
+                    presentCount.textContent = data.attendance?.present_students || 0;
+                }
+                if (totalStudents) {
+                    totalStudents.textContent = data.attendance?.all_students?.length || 0;
+                }
                 
                 // Update attendance display
                 updateLiveAttendanceFeed(data.attendance);
@@ -549,8 +575,9 @@
                 // Debug logging
                 console.log('Attendance update:', {
                     detection_active: data.detection_active,
-                    present_students: data.attendance.present_students,
-                    attendance_data: data.attendance.attendance
+                    present_students: data.attendance?.present_students,
+                    attendance_data: data.attendance?.attendance,
+                    all_students: data.attendance?.all_students
                 });
                 
             } catch (error) {
@@ -1196,8 +1223,18 @@
             const present = attendance.attendance ? Object.keys(attendance.attendance) : [];
             const absent = allStudents.filter(s => !present.includes(s));
             
+            console.log('Absent students calculation:', {
+                all_students: allStudents,
+                present: present,
+                absent: absent
+            });
+            
             if (absent.length === 0) {
-                absentDiv.innerHTML = '<p class="text-success">All students present!</p>';
+                if (allStudents.length > 0) {
+                    absentDiv.innerHTML = '<p class="text-success">All students present!</p>';
+                } else {
+                    absentDiv.innerHTML = '<p class="text-muted">No students registered.</p>';
+                }
             } else {
                 let html = '';
                 absent.forEach(student => {
@@ -1227,6 +1264,22 @@
 
         // Call this every 5 seconds for debugging
         setInterval(debugAttendance, 5000);
+
+        // Improve tab detection logic
+        setInterval(() => {
+            // Check if live tab is active using multiple methods
+            const liveTab = document.getElementById('live-tab');
+            const liveTabPane = document.getElementById('live');
+            const isLiveTabActive = (
+                (liveTab && liveTab.classList.contains('active')) ||
+                (liveTabPane && liveTabPane.classList.contains('active')) ||
+                (liveTabPane && liveTabPane.classList.contains('show'))
+            );
+            
+            if (isLiveTabActive) {
+                updateAttendanceOnly();
+            }
+        }, 2000);
     </script>
 </body>
 </html> 
