@@ -41,20 +41,53 @@
         }
         
         /* Add custom styling for class selector */
-        .class-selector {
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-            padding: 8px 12px;
-            color: white;
-            font-size: 0.9rem;
-            backdrop-filter: blur(10px);
+        .class-select-container {
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            border-radius: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+            padding: 18px 28px 14px 28px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-bottom: 18px;
+            justify-content: center;
+            max-width: 480px;
+            margin-left: auto;
+            margin-right: auto;
         }
-        
+
+        .class-label {
+            color: #fff;
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .class-label i {
+            font-size: 1.3rem;
+            color: #fff;
+        }
+
+        .class-selector {
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            border: 2px solid #00c6fb;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 8px 18px;
+            margin-left: 10px;
+            min-width: 180px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            transition: border-color 0.2s;
+        }
+
         .class-selector:focus {
+            border-color: #4facfe;
             outline: none;
-            border-color: rgba(255, 255, 255, 0.6);
-            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
         }
         
         .class-selector option {
@@ -291,7 +324,7 @@
         /* Toast notification styles */
         .attendance-toast {
             min-width: 320px;
-            max-width: 90vw;
+            max-width: 500px;
             background: linear-gradient(135deg, #28a745 60%, #20c997 100%);
             color: white;
             padding: 28px 40px;
@@ -307,6 +340,9 @@
             transition: opacity 0.3s, transform 0.3s;
             justify-content: center;
             text-align: center;
+            white-space: nowrap;         /* Prevent line breaks */
+            overflow: hidden;            /* Hide overflow */
+            text-overflow: ellipsis;     /* Show ... for overflow */
         }
         .attendance-toast.show {
             opacity: 1;
@@ -315,6 +351,13 @@
         }
         .attendance-toast i {
             font-size: 2.2rem;
+        }
+        #attendanceToastText {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            max-width: 320px; /* Adjust as needed */
         }
     </style>
 </head>
@@ -334,19 +377,14 @@
                 <p class="mb-0">Real-time face recognition for automatic attendance tracking</p>
                 
                 <!-- Add class selection with better styling -->
-                <div class="row mt-2">
-                    <div class="col-md-6">
-                        <label for="classSelect" class="class-label">Select Class:</label>
-                        <select id="classSelect" class="class-selector" onchange="changeClass()">
-                            <option value="">Loading classes...</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mt-2">
-                            <span class="status-indicator" id="systemStatus"></span>
-                            <span id="statusText">System Status</span>
-                        </div>
-                    </div>
+                <div class="class-select-container">
+                    <label for="classSelect" class="class-label">
+                        <i class="fas fa-chalkboard-teacher"></i>
+                        Select Class:
+                    </label>
+                    <select id="classSelect" class="class-selector" onchange="changeClass()">
+                        <option value="">Loading classes...</option>
+                    </select>
                 </div>
                 
                 <!-- Compact stats display -->
@@ -400,7 +438,7 @@
                                             <label for="sessionName" class="col-form-label" style="font-size: 0.9rem;">Session Name</label>
                                         </div>
                                         <div class="col-auto">
-                                            <input type="text" id="sessionName" class="form-control form-control-sm" placeholder="e.g. Math 101" style="width: 120px;">
+                                            <input type="text" id="sessionName" class="form-control form-control-sm" placeholder="e.g. Math 101" required>
                                         </div>
                                         <div class="col-auto">
                                             <label for="sessionStartTime" class="col-form-label" style="font-size: 0.9rem;">Class Start Time</label>
@@ -680,6 +718,23 @@
                     }
                 });
             });
+
+            // Add event listeners for class and session name
+            const classSelect = document.getElementById('classSelect');
+            const sessionNameInput = document.getElementById('sessionName');
+            const startBtn = document.getElementById('startBtn');
+
+            function checkStartReady() {
+                const classSelected = classSelect && classSelect.value;
+                const sessionName = sessionNameInput && sessionNameInput.value.trim();
+                startBtn.disabled = !(classSelected && sessionName);
+            }
+
+            if (classSelect) classSelect.addEventListener('change', checkStartReady);
+            if (sessionNameInput) sessionNameInput.addEventListener('input', checkStartReady);
+
+            // Initial check
+            checkStartReady();
         });
 
         // Start only status updates (not attendance updates)
@@ -720,11 +775,20 @@
 
         // Start detection
         async function startDetection() {
-            const sessionName = document.getElementById('sessionName').value;
+            const classSelect = document.getElementById('classSelect');
+            const sessionName = document.getElementById('sessionName').value.trim();
             const sessionStartTime = document.getElementById('sessionStartTime').value;
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
-            
+
+            if (!classSelect.value) {
+                showAlert('danger', 'Please select a class!');
+                return;
+            }
+            if (!sessionName) {
+                showAlert('danger', 'Please enter a session name!');
+                return;
+            }
             if (!sessionStartTime) {
                 showAlert('danger', 'Please set the class start time!');
                 return;
@@ -1552,6 +1616,7 @@
             const toast = document.getElementById('attendanceToast');
             const toastText = document.getElementById('attendanceToastText');
             toastText.textContent = `Attendance recorded: ${studentName}`;
+            toastText.title = `Attendance recorded: ${studentName}`;
             toast.style.display = 'flex';
             toast.classList.add('show');
             setTimeout(() => {
