@@ -40,6 +40,35 @@
             margin-bottom: 10px;
         }
         
+        /* Add custom styling for class selector */
+        .class-selector {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 8px 12px;
+            color: white;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .class-selector:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+        }
+        
+        .class-selector option {
+            background: #4facfe;
+            color: white;
+        }
+        
+        .class-label {
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -212,9 +241,62 @@
             width: 3rem;
             height: 3rem;
         }
+
+        /* Add loading screen styles */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+        }
+        
+        .loading-screen.hidden {
+            display: none;
+        }
+        
+        .loading-spinner {
+            width: 4rem;
+            height: 4rem;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .loading-subtext {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
+    <!-- Add loading screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading Classroom Attendance System</div>
+        <div class="loading-subtext" id="loadingSubtext">Initializing...</div>
+    </div>
+
     <div class="container-fluid">
         <div class="main-container">
             <!-- Header -->
@@ -222,11 +304,11 @@
                 <h1><i class="fas fa-user-check"></i> Classroom Attendance System</h1>
                 <p class="mb-0">Real-time face recognition for automatic attendance tracking</p>
                 
-                <!-- Add class selection -->
+                <!-- Add class selection with better styling -->
                 <div class="row mt-2">
                     <div class="col-md-6">
-                        <label for="classSelect" class="form-label text-white" style="font-size: 0.9rem;">Select Class:</label>
-                        <select id="classSelect" class="form-select form-select-sm" onchange="changeClass()">
+                        <label for="classSelect" class="class-label">Select Class:</label>
+                        <select id="classSelect" class="class-selector" onchange="changeClass()">
                             <option value="">Loading classes...</option>
                         </select>
                     </div>
@@ -495,27 +577,45 @@
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
-            loadClasses();  // Load classes first
-            updateStatus();
-            loadStudents();
-            loadSessions();
+            // Show loading screen
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingSubtext = document.getElementById('loadingSubtext');
             
-            // Update status every 5 seconds
-            statusUpdateInterval = setInterval(updateStatus, 5000);
+            // Initialize systems step by step
+            initializeApp();
             
-            // Update attendance more frequently when on live detection tab
-            setInterval(() => {
-                // Use the correct tab id: 'live-tab' and tab content id: 'live'
-                const liveTab = document.getElementById('live-tab');
-                const liveTabPane = document.getElementById('live');
-                if (
-                    (liveTab && liveTab.classList.contains('active')) ||
-                    (liveTabPane && liveTabPane.classList.contains('active'))
-                ) {
-                    updateAttendanceOnly();
+            async function initializeApp() {
+                try {
+                    // Step 1: Load classes
+                    loadingSubtext.textContent = 'Loading available classes...';
+                    await loadClasses();
+                    
+                    // Step 2: Update status
+                    loadingSubtext.textContent = 'Checking system status...';
+                    await updateStatus();
+                    
+                    // Step 3: Load students
+                    loadingSubtext.textContent = 'Loading students...';
+                    await loadStudents();
+                    
+                    // Step 4: Load sessions
+                    loadingSubtext.textContent = 'Loading session history...';
+                    await loadSessions();
+                    
+                    // Step 5: Hide loading screen
+                    setTimeout(() => {
+                        loadingScreen.classList.add('hidden');
+                    }, 500);
+                    
+                    // Start periodic updates only after initialization
+                    startPeriodicUpdates();
+                    
+                } catch (error) {
+                    console.error('Error during initialization:', error);
+                    loadingSubtext.textContent = 'Error during initialization. Please refresh the page.';
                 }
-            }, 2000);
-
+            }
+            
             // Show/hide sections based on method
             document.querySelectorAll('input[name="addMethod"]').forEach(radio => {
                 radio.addEventListener('change', function() {
@@ -539,6 +639,25 @@
                 });
             });
         });
+
+        // Start periodic updates only after initialization
+        function startPeriodicUpdates() {
+            // Update status every 5 seconds
+            statusUpdateInterval = setInterval(updateStatus, 5000);
+            
+            // Update attendance more frequently when on live detection tab
+            setInterval(() => {
+                // Use the correct tab id: 'live-tab' and tab content id: 'live'
+                const liveTab = document.getElementById('live-tab');
+                const liveTabPane = document.getElementById('live');
+                if (
+                    (liveTab && liveTab.classList.contains('active')) ||
+                    (liveTabPane && liveTabPane.classList.contains('active'))
+                ) {
+                    updateAttendanceOnly();
+                }
+            }, 2000);
+        }
 
         // Update system status
         async function updateStatus() {
@@ -585,11 +704,19 @@
             }
         }
 
-        // Update attendance only (for frequent updates)
+        // Update attendance only (for frequent updates) - only when detection is active
         async function updateAttendanceOnly() {
             try {
-                const response = await fetch('/api/attendance');
-                const data = await response.json();
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                
+                // Only update attendance if detection is active
+                if (!status.detection_active) {
+                    return;
+                }
+                
+                const attendanceResponse = await fetch('/api/attendance');
+                const data = await attendanceResponse.json();
                 
                 const presentCount = document.getElementById('presentCount');
                 const totalStudents = document.getElementById('totalStudents');
@@ -1004,7 +1131,7 @@
                 
                 // If there's a current class, load its students
                 if (data.current_class) {
-                    loadStudents();
+                    await loadStudents();
                 }
                 
             } catch (error) {
@@ -1022,6 +1149,12 @@
                 return;
             }
             
+            // Show loading for class change
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingSubtext = document.getElementById('loadingSubtext');
+            loadingScreen.classList.remove('hidden');
+            loadingSubtext.textContent = `Loading class: ${selectedClass}...`;
+            
             try {
                 const response = await fetch('/api/set-class', {
                     method: 'POST',
@@ -1035,13 +1168,18 @@
                 
                 if (result.success) {
                     showAlert('success', result.message);
-                    loadStudents();  // Reload students for the new class
-                    updateStatus();  // Update status with new student count
+                    await loadStudents();  // Reload students for the new class
+                    await updateStatus();  // Update status with new student count
                 } else {
                     showAlert('danger', result.error || 'Failed to change class');
                 }
             } catch (error) {
                 showAlert('danger', 'Error changing class: ' + error.message);
+            } finally {
+                // Hide loading screen
+                setTimeout(() => {
+                    loadingScreen.classList.add('hidden');
+                }, 500);
             }
         }
 
