@@ -505,40 +505,6 @@ def video_feed():
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/api/capture-current-frame', methods=['POST'])
-def capture_current_frame():
-    """Capture the current frame and return detected faces"""
-    global current_frame, current_faces, face_system
-    
-    try:
-        if current_frame is None:
-            return jsonify({'error': 'No frame available'}), 400
-        
-        # Get current faces if not already detected
-        if not current_faces and face_system:
-            current_faces = face_system.detect_faces(current_frame)
-        
-        # Filter only unknown faces
-        unknown_faces = []
-        for i, face in enumerate(current_faces):
-            if not face['student_name']:
-                unknown_faces.append({
-                    'index': i,
-                    'bbox': convert_numpy_types(face['bbox']),
-                    'confidence': face.get('confidence', 0),
-                    'embedding': convert_numpy_types(face['embedding'])
-                })
-        
-        return jsonify({
-            'success': True,
-            'unknown_faces': unknown_faces,
-            'total_faces': len(current_faces)
-        })
-        
-    except Exception as e:
-        logger.error(f"Error capturing current frame: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/capture-screenshot', methods=['POST'])
 def capture_screenshot():
     """Capture a screenshot and return detected faces with image"""
