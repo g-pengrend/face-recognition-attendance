@@ -287,6 +287,31 @@
             font-size: 0.9rem;
             opacity: 0.8;
         }
+
+        /* Toast notification styles */
+        .attendance-toast {
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 16px 28px;
+            border-radius: 30px;
+            box-shadow: 0 8px 24px rgba(40,167,69,0.15);
+            font-size: 1.1rem;
+            font-weight: 600;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .attendance-toast.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body>
@@ -568,6 +593,12 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Toast notification for attendance -->
+    <div id="attendanceToast" class="attendance-toast" style="display:none;">
+        <i class="fas fa-user-check"></i>
+        <span id="attendanceToastText"></span>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -1051,11 +1082,14 @@
             const feedDiv = document.getElementById('liveAttendanceList');
             if (!attendance || !attendance.attendance || Object.keys(attendance.attendance).length === 0) {
                 feedDiv.innerHTML = '<p class="text-muted">No students detected yet.</p>';
+                lastPresentStudents = new Set(); // Reset
                 return;
             }
             
             let html = '';
+            const currentPresent = new Set();
             Object.entries(attendance.attendance).forEach(([student, data]) => {
+                currentPresent.add(student);
                 let badgeClass = 'badge-on-time';
                 let itemClass = '';
                 let lateness = data.lateness || {};
@@ -1100,6 +1134,14 @@
                 `;
             });
             feedDiv.innerHTML = html;
+
+            // Show toast for any new student(s)
+            currentPresent.forEach(student => {
+                if (!lastPresentStudents.has(student)) {
+                    showAttendanceToast(student);
+                }
+            });
+            lastPresentStudents = currentPresent;
         }
 
         // Show alert
@@ -1493,6 +1535,21 @@
                 // updateAttendanceOnly(); // Refresh attendance data - now handled by startAttendanceUpdates
             }
         }, 2000);
+
+        // Track previously present students
+        let lastPresentStudents = new Set();
+
+        function showAttendanceToast(studentName) {
+            const toast = document.getElementById('attendanceToast');
+            const toastText = document.getElementById('attendanceToastText');
+            toastText.textContent = `Attendance recorded: ${studentName}`;
+            toast.style.display = 'flex';
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => { toast.style.display = 'none'; }, 300);
+            }, 1500); // Show for 1.5 seconds
+        }
     </script>
 </body>
 </html> 
