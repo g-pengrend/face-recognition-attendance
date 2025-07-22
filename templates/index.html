@@ -217,11 +217,6 @@
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab">
-                            <i class="fas fa-clipboard-list"></i> Attendance
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="sessions-tab" data-bs-toggle="tab" data-bs-target="#sessions" type="button" role="tab">
                             <i class="fas fa-history"></i> Sessions
                         </button>
@@ -282,18 +277,10 @@
                                         <p class="text-muted">No students detected yet.</p>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Attendance Tab -->
-                    <div class="tab-pane fade" id="attendance" role="tabpanel">
-                        <div class="row">
-                            <div class="col-12">
-                                <div class="attendance-card">
-                                    <h4><i class="fas fa-clipboard-check"></i> Current Session Attendance</h4>
-                                    <div id="currentAttendance">
-                                        <p class="text-muted">No active session. Start detection to begin tracking attendance.</p>
+                                <div class="attendance-card mt-3">
+                                    <h6><i class="fas fa-user-times"></i> Not Yet Present</h6>
+                                    <div id="absentStudentsList">
+                                        <p class="text-muted">All students present!</p>
                                     </div>
                                 </div>
                             </div>
@@ -1045,7 +1032,7 @@
             // First, load existing students for the dropdown
             loadStudentsForDropdown().then(existingStudents => {
                 let modalHtml = `
-                    <div class="modal fade" id="unknownFacesModal" tabindex="-1">
+                    <div class="modal fade" id="unknownFacesModal" tabindex="-1" data-bs-backdrop="static">
                         <div class="modal-dialog modal-xl">
                             <div class="modal-content">
                                 <div class="modal-header">
@@ -1122,6 +1109,11 @@
                 // Show the modal
                 const modal = new bootstrap.Modal(document.getElementById('unknownFacesModal'));
                 modal.show();
+
+                // Ensure modal is fully removed from DOM on close to prevent tab freeze
+                document.getElementById('unknownFacesModal').addEventListener('hidden.bs.modal', function () {
+                    this.remove();
+                });
             });
         }
 
@@ -1169,6 +1161,23 @@
                 }
             } catch (error) {
                 showAlert('danger', 'Error saving face photo: ' + error.message);
+            }
+        }
+
+        // Update absent students list
+        function updateAbsentStudentsList(attendance) {
+            const absentDiv = document.getElementById('absentStudentsList');
+            if (!attendance || !attendance.attendance) {
+                absentDiv.innerHTML = '<p class="text-muted">No data.</p>';
+                return;
+            }
+            const allStudents = attendance.all_students || []; // Backend should provide this list!
+            const present = Object.keys(attendance.attendance);
+            const absent = allStudents.filter(s => !present.includes(s));
+            if (absent.length === 0) {
+                absentDiv.innerHTML = '<p class="text-success">All students present!</p>';
+            } else {
+                absentDiv.innerHTML = absent.map(s => `<div class="student-item unknown">${s}</div>`).join('');
             }
         }
     </script>
