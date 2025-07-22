@@ -574,6 +574,8 @@
     <script>
         let currentSessionId = null;
         let statusUpdateInterval = null;
+        let attendanceUpdateInterval = null;  // Add separate interval for attendance
+        let isDetectionActive = false;  // Track detection state locally
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -607,8 +609,8 @@
                         loadingScreen.classList.add('hidden');
                     }, 500);
                     
-                    // Start periodic updates only after initialization
-                    startPeriodicUpdates();
+                    // Start only status updates (not attendance updates)
+                    startStatusUpdates();
                     
                 } catch (error) {
                     console.error('Error during initialization:', error);
@@ -640,26 +642,170 @@
             });
         });
 
-        // Start periodic updates only after initialization
-        function startPeriodicUpdates() {
+        // Start only status updates (not attendance updates)
+        function startStatusUpdates() {
             // Update status every 5 seconds
             statusUpdateInterval = setInterval(updateStatus, 5000);
+        }
+
+        // Start attendance updates when detection starts
+        function startAttendanceUpdates() {
+            if (attendanceUpdateInterval) {
+                clearInterval(attendanceUpdateInterval);
+            }
             
-            // Update attendance more frequently when on live detection tab
-            setInterval(() => {
-                // Use the correct tab id: 'live-tab' and tab content id: 'live'
+            attendanceUpdateInterval = setInterval(() => {
+                // Only update if we're on the live tab and detection is active
                 const liveTab = document.getElementById('live-tab');
                 const liveTabPane = document.getElementById('live');
-                if (
+                const isLiveTabActive = (
                     (liveTab && liveTab.classList.contains('active')) ||
-                    (liveTabPane && liveTabPane.classList.contains('active'))
-                ) {
+                    (liveTabPane && liveTabPane.classList.contains('active')) ||
+                    (liveTabPane && liveTabPane.classList.contains('show'))
+                );
+                
+                if (isLiveTabActive && isDetectionActive) {
                     updateAttendanceOnly();
                 }
             }, 2000);
         }
 
-        // Update system status
+        // Stop attendance updates when detection stops
+        function stopAttendanceUpdates() {
+            if (attendanceUpdateInterval) {
+                clearInterval(attendanceUpdateInterval);
+                attendanceUpdateInterval = null;
+            }
+        }
+
+        // Start detection
+        async function startDetection() {
+            const sessionName = document.getElementById('sessionName').value;
+            const sessionStartTime = document.getElementById('sessionStartTime').value;
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            if (!sessionStartTime) {
+                showAlert('danger', 'Please set the class start time!');
+                return;
+            }
+
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+            
+            try {
+                const response = await fetch('/api/start-detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        session_name: sessionName,
+                        session_start_time: sessionStartTime
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentSessionId = result.session_id;
+                    isDetectionActive = true;  // Set local state
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    showAlert('success', 'Detection started successfully!');
+                    
+                    // Start attendance updates now that detection is active
+                    startAttendanceUpdates();
+                    
+                } else {
+                    showAlert('danger', result.error || 'Failed to start detection');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error starting detection: ' + error.message);
+            } finally {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Detection';
+            }
+        }
+
+        // Stop detection
+        async function stopDetection() {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            stopBtn.disabled = true;
+            stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+            
+            try {
+                const response = await fetch('/api/stop-detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentSessionId = null;
+                    isDetectionActive = false;  // Set local state
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    showAlert('success', 'Detection stopped successfully!');
+                    
+                    // Stop attendance updates now that detection is inactive
+                    stopAttendanceUpdates();
+                    
+                    // Clear attendance display
+                    updateLiveAttendanceFeed({});
+                    updateAbsentStudentsList({});
+                    
+                } else {
+                    showAlert('danger', result.error || 'Failed to stop detection');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error stopping detection: ' + error.message);
+            } finally {
+                stopBtn.disabled = false;
+                stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Detection';
+            }
+        }
+
+        // Update attendance only (simplified - no need to check detection_active)
+        async function updateAttendanceOnly() {
+            try {
+                const response = await fetch('/api/attendance');
+                const data = await response.json();
+                
+                const presentCount = document.getElementById('presentCount');
+                const totalStudents = document.getElementById('totalStudents');
+                
+                // Update counts if elements exist
+                if (presentCount) {
+                    presentCount.textContent = data.attendance?.present_students || 0;
+                }
+                if (totalStudents) {
+                    totalStudents.textContent = data.attendance?.all_students?.length || 0;
+                }
+                
+                // Update attendance display
+                updateLiveAttendanceFeed(data.attendance);
+                updateAbsentStudentsList(data.attendance);
+                
+                // Debug logging
+                console.log('Attendance update:', {
+                    detection_active: data.detection_active,
+                    present_students: data.attendance?.present_students,
+                    attendance_data: data.attendance?.attendance,
+                    all_students: data.attendance?.all_students
+                });
+                
+            } catch (error) {
+                console.error('Error updating attendance:', error);
+            }
+        }
+
+        // Update system status (keep this as is - it's useful for system health)
         async function updateStatus() {
             try {
                 const response = await fetch('/api/status');
@@ -695,133 +841,14 @@
                     all_students: status.current_session?.all_students
                 });
                 
-                // Update live attendance feed
-                updateLiveAttendanceFeed(status.current_session);
-                updateAbsentStudentsList(status.current_session);
+                // Update live attendance feed only if detection is active
+                if (status.detection_active) {
+                    updateLiveAttendanceFeed(status.current_session);
+                    updateAbsentStudentsList(status.current_session);
+                }
                 
             } catch (error) {
                 console.error('Error updating status:', error);
-            }
-        }
-
-        // Update attendance only (for frequent updates) - only when detection is active
-        async function updateAttendanceOnly() {
-            try {
-                const response = await fetch('/api/status');
-                const status = await response.json();
-                
-                // Only update attendance if detection is active
-                if (!status.detection_active) {
-                    return;
-                }
-                
-                const attendanceResponse = await fetch('/api/attendance');
-                const data = await attendanceResponse.json();
-                
-                const presentCount = document.getElementById('presentCount');
-                const totalStudents = document.getElementById('totalStudents');
-                
-                // Update counts if elements exist
-                if (presentCount) {
-                    presentCount.textContent = data.attendance?.present_students || 0;
-                }
-                if (totalStudents) {
-                    totalStudents.textContent = data.attendance?.all_students?.length || 0;
-                }
-                
-                // Update attendance display
-                updateLiveAttendanceFeed(data.attendance);
-                updateAbsentStudentsList(data.attendance);
-                
-                // Debug logging
-                console.log('Attendance update:', {
-                    detection_active: data.detection_active,
-                    present_students: data.attendance?.present_students,
-                    attendance_data: data.attendance?.attendance,
-                    all_students: data.attendance?.all_students
-                });
-                
-            } catch (error) {
-                console.error('Error updating attendance:', error);
-            }
-        }
-
-        // Start detection
-        async function startDetection() {
-            const sessionName = document.getElementById('sessionName').value;
-            const sessionStartTime = document.getElementById('sessionStartTime').value;
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            
-            if (!sessionStartTime) {
-                showAlert('danger', 'Please set the class start time!');
-                return;
-            }
-
-            startBtn.disabled = true;
-            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
-            
-            try {
-                const response = await fetch('/api/start-detection', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        session_name: sessionName,
-                        session_start_time: sessionStartTime // <-- send to backend
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    currentSessionId = result.session_id;
-                    startBtn.disabled = true;
-                    stopBtn.disabled = false;
-                    showAlert('success', 'Detection started successfully!');
-                } else {
-                    showAlert('danger', result.error || 'Failed to start detection');
-                }
-            } catch (error) {
-                showAlert('danger', 'Error starting detection: ' + error.message);
-            } finally {
-                startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Detection';
-            }
-        }
-
-        // Stop detection
-        async function stopDetection() {
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            
-            stopBtn.disabled = true;
-            stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
-            
-            try {
-                const response = await fetch('/api/stop-detection', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    currentSessionId = null;
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    showAlert('success', 'Detection stopped successfully!');
-                } else {
-                    showAlert('danger', result.error || 'Failed to stop detection');
-                }
-            } catch (error) {
-                showAlert('danger', 'Error stopping detection: ' + error.message);
-            } finally {
-                stopBtn.disabled = false;
-                stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Detection';
             }
         }
 
@@ -1099,7 +1126,7 @@
         document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function (event) {
                 if (event.target.id === 'live-tab') {
-                    updateAttendanceOnly(); // Refresh attendance data
+                    // updateAttendanceOnly(); // Refresh attendance data - now handled by startAttendanceUpdates
                 }
             });
         });
@@ -1463,7 +1490,7 @@
             );
             
             if (isLiveTabActive) {
-                updateAttendanceOnly();
+                // updateAttendanceOnly(); // Refresh attendance data - now handled by startAttendanceUpdates
             }
         }, 2000);
     </script>
