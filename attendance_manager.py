@@ -107,7 +107,7 @@ class AttendanceManager:
                 'category': "Unknown"
             }
     
-    def start_session(self, session_name: Optional[str] = None, session_start_time: Optional[str] = None) -> str:
+    def start_session(self, session_name: Optional[str] = None, session_start_time: Optional[str] = None, class_name: Optional[str] = None) -> str:
         """
         Start a new attendance session
         
@@ -127,6 +127,8 @@ class AttendanceManager:
         
         self.current_session = {
             'id': session_name,
+            'session_name': session_name, # Added session_name
+            'class_name': class_name, # Added class_name
             'start_time': datetime.now().isoformat(),  # Detection start time
             'session_start_time': session_start_time,  # Session start time for punctuality
             'end_time': None,
@@ -136,6 +138,7 @@ class AttendanceManager:
         }
         
         self.logger.info(f"Started attendance session: {session_name} with start time: {session_start_time}")
+        self._save_session() # Changed to _save_session
         return session_name
     
     def end_session(self) -> bool:

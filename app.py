@@ -264,9 +264,10 @@ def start_detection():
         # Get session details from request
         session_name = request.json.get('session_name')
         session_start_time = request.json.get('session_start_time')
+        class_name = request.json.get('class_name')
         
         # Start attendance session with start time
-        session_id = attendance_manager.start_session(session_name, session_start_time)
+        session_id = attendance_manager.start_session(session_name, session_start_time, class_name)
         
         # Set total students count
         total_students = len(face_system.get_students_list())

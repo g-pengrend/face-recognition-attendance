@@ -840,7 +840,8 @@
                     },
                     body: JSON.stringify({ 
                         session_name: sessionName,
-                        session_start_time: sessionStartTime
+                        session_start_time: sessionStartTime,
+                        class_name: classSelect.value // <-- Add this line
                     })
                 });
                 
