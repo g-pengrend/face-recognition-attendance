@@ -689,7 +689,7 @@
                     // Step 1: Load classes
                     loadingSubtext.textContent = 'Loading available classes...';
                     await loadClasses();
-                    
+            
                     // Step 2: Update status
                     loadingSubtext.textContent = 'Checking system status...';
                     await updateStatus();
@@ -715,7 +715,7 @@
                     loadingSubtext.textContent = 'Error during initialization. Please refresh the page.';
                 }
             }
-            
+
             // Show/hide sections based on method
             document.querySelectorAll('input[name="addMethod"]').forEach(radio => {
                 radio.addEventListener('change', function() {
@@ -736,8 +736,8 @@
                             videoFeed.style.display = 'block';
                         }, 100);
                     }
-                });
             });
+        });
 
             // Add event listeners for class and session name
             const classSelect = document.getElementById('classSelect');
@@ -748,15 +748,15 @@
                 const classSelected = classSelect && classSelect.value;
                 const sessionName = sessionNameInput && sessionNameInput.value.trim();
                 startBtn.disabled = !(classSelected && sessionName);
-            }
-
+                }
+                
             if (classSelect) classSelect.addEventListener('change', checkStartReady);
             if (sessionNameInput) sessionNameInput.addEventListener('input', checkStartReady);
 
             // Initial check
             checkStartReady();
         });
-
+                
         // Start only status updates (not attendance updates)
         function startStatusUpdates() {
             // Update status every 5 seconds
@@ -800,7 +800,7 @@
             const sessionStartTime = document.getElementById('sessionStartTime').value;
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
-
+            
             if (!classSelect.value) {
                 showAlert('danger', 'Please select a class!');
                 return;
@@ -1181,7 +1181,15 @@
             
             let html = '';
             const currentPresent = new Set();
-            Object.entries(attendance.attendance).forEach(([student, data]) => {
+
+            // Sort students by most recent attendance (last_seen descending)
+            const sortedEntries = Object.entries(attendance.attendance).sort((a, b) => {
+                const aTime = new Date(a[1].last_seen).getTime();
+                const bTime = new Date(b[1].last_seen).getTime();
+                return bTime - aTime;
+            });
+
+            sortedEntries.forEach(([student, data]) => {
                 currentPresent.add(student);
                 let badgeClass = 'badge-on-time';
                 let itemClass = '';
@@ -1479,10 +1487,17 @@
                                     <p class="text-muted">Confidence: ${(face.confidence * 100).toFixed(1)}%</p>
                                     <div class="mb-2">
                                         <label class="form-label">Student:</label>
-                                        <select class="form-select" id="studentSelect_${face.index}">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="studentSearch_${face.index}" 
+                                                   placeholder="Search students..." onkeyup="filterStudentDropdown(${face.index})">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="clearStudentSearch(${face.index})">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                        <select class="form-select mt-1" id="studentSelect_${face.index}" size="5">
                                             <option value="">-- Select existing student or type new name --</option>
                                             ${existingStudents.map(student => 
-                                                `<option value="${student}">${student}</option>`
+                                                `<option value="${student}" class="student-option">${student}</option>`
                                             ).join('')}
                                         </select>
                                     </div>
@@ -1525,12 +1540,20 @@
             });
         }
 
-        // Helper to load students for dropdown
+        // Helper to load students for dropdown with sorting and search
         async function loadStudentsForDropdown() {
             try {
                 const response = await fetch('/api/students');
                 const data = await response.json();
-                return data.students || [];
+                const students = data.students || [];
+                
+                // Sort students numerically (1_XXX, 2_XXX, 10_XXX, 11_XXX)
+                return students.sort((a, b) => {
+                    // Extract numbers from student names (e.g., "1_John" -> 1, "10_Mary" -> 10)
+                    const numA = parseInt(a.match(/^(\d+)_/)?.[1] || '0');
+                    const numB = parseInt(b.match(/^(\d+)_/)?.[1] || '0');
+                    return numA - numB;
+                });
             } catch (error) {
                 return [];
             }
@@ -1595,7 +1618,7 @@
             
             if (absent.length === 0) {
                 if (allStudents.length > 0) {
-                    absentDiv.innerHTML = '<p class="text-success">All students present!</p>';
+                absentDiv.innerHTML = '<p class="text-success">All students present!</p>';
                 } else {
                     absentDiv.innerHTML = '<p class="text-muted">No students registered.</p>';
                 }
@@ -1635,14 +1658,33 @@
         function showAttendanceToast(studentName) {
             const toast = document.getElementById('attendanceToast');
             const toastText = document.getElementById('attendanceToastText');
-            toastText.textContent = studentName;
+            toastText.textContent = studentName;  // Just show the name, no "Attendance recorded:" prefix
             toastText.title = studentName;
             toast.style.display = 'flex';
             toast.classList.add('show');
             setTimeout(() => {
                 toast.classList.remove('show');
                 setTimeout(() => { toast.style.display = 'none'; }, 300);
-            }, 1800); // Show for 1.8 seconds
+            }, 1500);  // Show for 1.5 seconds instead of 2
+        }
+
+        // Filter dropdown options based on search input
+        function filterStudentDropdown(faceIndex) {
+            const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
+            const filter = searchInput.value.toLowerCase();
+            const select = document.getElementById(`studentSelect_${faceIndex}`);
+            Array.from(select.options).forEach(option => {
+                if (option.value === "") return; // Always show the placeholder
+                option.style.display = option.text.toLowerCase().includes(filter) ? "" : "none";
+            });
+        }
+
+        // Clear search box and reset dropdown
+        function clearStudentSearch(faceIndex) {
+            const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
+            searchInput.value = "";
+            filterStudentDropdown(faceIndex);
+            searchInput.focus();
         }
     </script>
 </body>

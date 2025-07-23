@@ -89,16 +89,30 @@ class FaceRecognitionSystem:
                         image_path = os.path.join(item_path, filename)
                         student_images.append(image_path)
                 
+                # Always add the student to the database, even if no valid images
                 if not student_images:
                     self.logger.warning(f"No images found in student folder: {student_name}")
-                    continue
-                
-                # Load the student with multiple images
-                success = self._load_student_with_multiple_images(student_name, student_images)
-                if success:
-                    self.logger.info(f"Loaded student: {student_name} with {len(student_images)} images")
+                    # Add student with empty data - they can be added later
+                    self.students_db[student_name] = {
+                        'embeddings': [],
+                        'image_paths': [],
+                        'primary_embedding': None
+                    }
+                    self.logger.info(f"Added student folder to list: {student_name} (no images)")
                 else:
-                    self.logger.error(f"Failed to load student: {student_name}")
+                    # Load the student with multiple images
+                    success = self._load_student_with_multiple_images(student_name, student_images)
+                    if success:
+                        self.logger.info(f"Loaded student: {student_name} with {len(student_images)} images")
+                    else:
+                        # Add student with empty data if face detection failed
+                        self.logger.warning(f"Face detection failed for student: {student_name}")
+                        self.students_db[student_name] = {
+                            'embeddings': [],
+                            'image_paths': student_images,  # Keep the image paths for reference
+                            'primary_embedding': None
+                        }
+                        self.logger.info(f"Added student to list: {student_name} (no faces detected)")
             
             elif os.path.isfile(item_path):
                 # This is a single image file (backward compatibility)
@@ -283,40 +297,27 @@ class FaceRecognitionSystem:
     
     def recognize_face(self, face_embedding):
         """
-        Recognize a face by comparing embeddings (supports multiple embeddings per student)
-        
-        Args:
-            face_embedding (np.ndarray): Face embedding to recognize
-            
-        Returns:
-            tuple: (student_name, confidence) or (None, 0.0) if not recognized
+        Recognize a face by comparing embedding with known faces
         """
-        if not self.initialized or len(self.students_db) == 0:
+        if not self.students_db:
             return None, 0.0
         
         best_match = None
         best_confidence = 0.0
         
         for student_name, student_data in self.students_db.items():
-            # Handle multiple embeddings per student
-            if 'embeddings' in student_data:
-                # Check against all embeddings for this student
-                for embedding in student_data['embeddings']:
-                    similarity = np.dot(face_embedding, embedding) / (
-                        np.linalg.norm(face_embedding) * np.linalg.norm(embedding)
-                    )
-                    
-                    if similarity > best_confidence and similarity >= self.base_threshold:
-                        best_confidence = similarity
-                        best_match = student_name
-            else:
-                # Single embedding (backward compatibility)
-                similarity = np.dot(face_embedding, student_data['embedding']) / (
-                    np.linalg.norm(face_embedding) * np.linalg.norm(student_data['embedding'])
-                )
+            # Skip students with no embeddings (empty folders)
+            if not student_data.get('embeddings'):
+                continue
+            
+            # Compare with all embeddings for this student
+            for embedding in student_data['embeddings']:
+                # Calculate cosine similarity
+                similarity = np.dot(face_embedding, embedding) / (np.linalg.norm(face_embedding) * np.linalg.norm(embedding))
+                confidence = float(similarity)
                 
-                if similarity > best_confidence and similarity >= self.base_threshold:
-                    best_confidence = similarity
+                if confidence > best_confidence and confidence >= self.base_threshold:
+                    best_confidence = confidence
                     best_match = student_name
         
         return best_match, best_confidence

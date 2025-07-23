@@ -174,13 +174,10 @@ def detection_loop():
             all_faces = face_system.detect_faces(frame)
             current_faces = all_faces  # Store for photo capture
             
-            # Get the next batch of faces to process
-            current_batch = face_sampling_manager.get_next_batch(all_faces)
-            
-            # Process the current batch
-            for face in current_batch:
+            # Process faces immediately for faster attendance recording
+            for face in all_faces:
                 if face['student_name'] and face['confidence'] >= 0.6:
-                    # Known face - mark attendance
+                    # Known face - mark attendance immediately
                     success = attendance_manager.mark_attendance(
                         face['student_name'], 
                         face['confidence']
@@ -190,7 +187,7 @@ def detection_loop():
                     else:
                         logger.warning(f"Failed to mark attendance for {face['student_name']}")
             
-            time.sleep(0.2)
+            time.sleep(0.1)  # Reduced sleep time for faster response
             
         except Exception as e:
             logger.error(f"Error in detection loop: {e}")
