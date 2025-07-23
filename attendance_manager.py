@@ -132,8 +132,7 @@ class AttendanceManager:
             'end_time': None,
             'attendance': {},
             'total_students': 0,
-            'present_students': 0,
-            'active': True # Added active flag
+            'present_students': 0
         }
         
         self.logger.info(f"Started attendance session: {session_name} with start time: {session_start_time}")
@@ -150,8 +149,9 @@ class AttendanceManager:
             return False
         
         self.current_session['end_time'] = datetime.now().isoformat()
-        self.current_session['active'] = False # Mark session as inactive
-        self._save_session_json() # Save the updated session
+        
+        # Save session data
+        self._save_session()
         
         session_id = self.current_session['id']
         self.logger.info(f"Ended attendance session: {session_id}")
@@ -208,9 +208,10 @@ class AttendanceManager:
             }
             self.current_session['present_students'] += 1
         
-        self.current_session['active'] = True # Ensure active flag is True after every update
-        self._save_session_json()
-        self._save_session_json()  # Save JSON, not CSV
+        self.logger.info(f"Marked attendance for {student_name} (confidence: {confidence:.2f}, lateness: {lateness_info.get('status', 'Unknown')})")
+        self._save_session()
+        if self.current_session:
+            self.export_to_csv(self.current_session['id'])
         return True
     
     def get_current_attendance(self) -> Dict:
@@ -349,10 +350,9 @@ class AttendanceManager:
         Returns:
             str: Path to exported CSV file or None if failed
         """
-        # Load session data from JSON
-        path = os.path.join(self.logs_folder, f"{session_id}.json")
-        with open(path, 'r') as f:
-            session_data = json.load(f)
+        summary = self.get_session_summary(session_id)
+        if not summary:
+            return None
         
         if output_path is None:
             output_path = os.path.join(self.logs_folder, f"{session_id}_attendance.csv")
@@ -375,7 +375,7 @@ class AttendanceManager:
                 ])
                 
                 # Write attendance data
-                for student_name, data in session_data['attendance'].items():
+                for student_name, data in summary['attendance'].items():
                     duration = self._calculate_duration(data['first_seen'], data['last_seen'])
                     
                     # Get lateness information
@@ -403,21 +403,21 @@ class AttendanceManager:
                 # Write summary
                 writer.writerow([])
                 writer.writerow(['Summary'])
-                writer.writerow(['Session ID', session_data['id']])
-                writer.writerow(['Detection Start Time', session_data['start_time']])
-                writer.writerow(['Class Start Time', session_data['session_start_time']])  # <-- Added this line
-                writer.writerow(['End Time', session_data['end_time']])
-                writer.writerow(['Duration (minutes)', session_data['duration_minutes']])
-                writer.writerow(['Total Students', session_data['total_students']])
-                writer.writerow(['Present Students', session_data['present_students']])
-                writer.writerow(['Attendance Rate', f"{session_data['attendance_rate']:.2%}"])
-                writer.writerow(['Total Detections', session_data['total_detections']])
+                writer.writerow(['Session ID', summary['session_id']])
+                writer.writerow(['Detection Start Time', summary['start_time']])
+                writer.writerow(['Class Start Time', summary['session_start_time']])  # <-- Added this line
+                writer.writerow(['End Time', summary['end_time']])
+                writer.writerow(['Duration (minutes)', summary['duration_minutes']])
+                writer.writerow(['Total Students', summary['total_students']])
+                writer.writerow(['Present Students', summary['present_students']])
+                writer.writerow(['Attendance Rate', f"{summary['attendance_rate']:.2%}"])
+                writer.writerow(['Total Detections', summary['total_detections']])
                 
                 # Write lateness statistics
-                if 'lateness_stats' in session_data:
+                if 'lateness_stats' in summary:
                     writer.writerow([])
                     writer.writerow(['Lateness Statistics'])
-                    for category, count in session_data['lateness_stats'].items():
+                    for category, count in summary['lateness_stats'].items():
                         writer.writerow([category, count])
             
             self.logger.info(f"Exported attendance data to {output_path}")
@@ -461,14 +461,6 @@ class AttendanceManager:
         except Exception as e:
             self.logger.error(f"Error saving session: {e}")
             return False
-    
-    def _save_session_json(self):
-        if not self.current_session:
-            return
-        session_id = self.current_session.get('id', 'unknown')
-        path = os.path.join(self.logs_folder, f"{session_id}.json")
-        with open(path, 'w') as f:
-            json.dump(self.current_session, f, indent=2, default=str)
     
     def _calculate_duration(self, start_time: str, end_time: str) -> float:
         """
@@ -531,12 +523,3 @@ class AttendanceManager:
             'average_attendance_rate': avg_attendance_rate,
             'sessions': daily_sessions
         } 
-
-    def find_active_session(self):
-        for fname in os.listdir(self.logs_folder):
-            if fname.endswith('.json'):
-                with open(os.path.join(self.logs_folder, fname)) as f:
-                    session = json.load(f)
-                    if session.get('active', False):
-                        return session
-        return None 
