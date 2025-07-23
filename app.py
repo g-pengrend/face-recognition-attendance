@@ -343,14 +343,22 @@ def get_attendance():
 
 @app.route('/api/sessions')
 def get_sessions():
-    """Get list of all sessions"""
-    global attendance_manager
-    
-    if not attendance_manager:
-        return jsonify({'error': 'Attendance manager not initialized'}), 500
-    
-    sessions = attendance_manager.list_sessions()
-    return jsonify({'sessions': convert_numpy_types(sessions)})
+    """List all saved sessions (JSON files)"""
+    sessions = []
+    for fname in os.listdir('attendance_logs'):
+        if fname.endswith('.json'):
+            with open(os.path.join('attendance_logs', fname)) as f:
+                session = json.load(f)
+                sessions.append({
+                    'session_id': session.get('session_id', fname.replace('.json', '')),
+                    'session_name': session.get('session_name', ''),
+                    'start_time': session.get('session_start_time', ''),
+                    'active': session.get('active', False),
+                    'filename': fname
+                })
+    # Sort by start_time descending
+    sessions.sort(key=lambda s: s['start_time'], reverse=True)
+    return jsonify({'sessions': sessions})
 
 @app.route('/api/sessions/<session_id>')
 def get_session(session_id):
@@ -813,6 +821,16 @@ def save_face_photo():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/load-session', methods=['POST'])
+def load_session():
+    session_id = request.json.get('session_id')
+    path = os.path.join('attendance_logs', f"{session_id}.json")
+    if not os.path.exists(path):
+        return jsonify({'error': 'Session not found'}), 404
+    with open(path) as f:
+        session = json.load(f)
+    return jsonify({'session': session})
 
 # Update the static file serving route
 @app.route('/temp/<filename>')
