@@ -473,6 +473,9 @@
                                             <button id="stopBtn" class="btn btn-stop btn-custom btn-sm" onclick="stopDetection()" disabled>
                                                 <i class="fas fa-stop"></i> Stop Detection
                                             </button>
+                                            <button class="btn btn-secondary ms-2" id="resumeSessionBtn" style="display:none;">
+                                                <i class="fas fa-history"></i> Resume Session
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -743,18 +746,30 @@
             const classSelect = document.getElementById('classSelect');
             const sessionNameInput = document.getElementById('sessionName');
             const startBtn = document.getElementById('startBtn');
+            const resumeSessionBtn = document.getElementById('resumeSessionBtn');
 
             function checkStartReady() {
                 const classSelected = classSelect && classSelect.value;
                 const sessionName = sessionNameInput && sessionNameInput.value.trim();
                 startBtn.disabled = !(classSelected && sessionName);
-                }
+                resumeSessionBtn.style.display = classSelected && !isDetectionActive ? '' : 'none';
+            }
                 
             if (classSelect) classSelect.addEventListener('change', checkStartReady);
             if (sessionNameInput) sessionNameInput.addEventListener('input', checkStartReady);
 
             // Initial check
             checkStartReady();
+
+            // Handle resume session button click
+            document.getElementById('resumeSessionBtn').onclick = async function() {
+                // Fetch available sessions for the selected class
+                const className = document.getElementById('classSelect').value;
+                const res = await fetch('/api/sessions?class=' + encodeURIComponent(className));
+                const data = await res.json();
+                // Show a modal or dropdown to let the user pick a session to resume
+                showResumeSessionModal(data.sessions);
+            };
         });
                 
         // Start only status updates (not attendance updates)
