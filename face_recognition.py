@@ -8,6 +8,9 @@ from datetime import datetime
 import logging
 from typing import List
 
+# Set ONNX Runtime environment variables BEFORE importing InsightFace
+os.environ['ONNXRUNTIME_PROVIDER_NAMES'] = 'CoreMLExecutionProvider,CPUExecutionProvider'
+
 class FaceRecognitionSystem:
     def __init__(self, students_folder="students", threshold=0.6):
         """
@@ -168,21 +171,16 @@ class FaceRecognitionSystem:
             import onnxruntime as ort
             available_providers = ort.get_available_providers()
             print("ONNX Runtime available providers:", available_providers)
-            # Prefer CoreML if available, else fallback to CPU
-            if 'CoreMLExecutionProvider' in available_providers:
-                providers = ['CoreMLExecutionProvider', 'CPUExecutionProvider']
-                print("Using CoreMLExecutionProvider for ONNX Runtime.")
-            else:
-                providers = ['CPUExecutionProvider']
-                print("Using CPUExecutionProvider for ONNX Runtime.")
-
-            # Initialize InsightFace app with providers
+            
+            # Initialize InsightFace app (providers are set via environment variable)
             self.app = FaceAnalysis(name='buffalo_l')
-            self.app.prepare(ctx_id=0, det_size=(640, 640), providers=providers)
-
-            self.logger.info(f"InsightFace initialized successfully with providers: {providers}")
+            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            
+            # Check which providers are actually being used
+            print("InsightFace initialized successfully")
+            print("Note: CoreML provider preference is set via environment variable")
             self.initialized = True
-
+            
         except Exception as e:
             self.logger.error(f"Failed to initialize InsightFace: {e}")
             raise

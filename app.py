@@ -13,6 +13,9 @@ import random # Added for smart sampling
 from face_recognition import FaceRecognitionSystem
 from attendance_manager import AttendanceManager
 
+# Set ONNX Runtime to prefer CoreML before importing any other modules
+os.environ['ONNXRUNTIME_PROVIDER_NAMES'] = 'CoreMLExecutionProvider,CPUExecutionProvider'
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
