@@ -209,9 +209,6 @@ class AttendanceManager:
             self.current_session['present_students'] += 1
         
         self.logger.info(f"Marked attendance for {student_name} (confidence: {confidence:.2f}, lateness: {lateness_info.get('status', 'Unknown')})")
-        self._save_session()
-        if self.current_session:
-            self.export_to_csv(self.current_session['id'])
         return True
     
     def get_current_attendance(self) -> Dict:

@@ -165,24 +165,16 @@ class FaceRecognitionSystem:
     def _initialize_insightface(self):
         """Initialize InsightFace with Apple Silicon optimization"""
         try:
-            import onnxruntime as ort
-            available_providers = ort.get_available_providers()
-            print("ONNX Runtime available providers:", available_providers)
-            # Prefer CoreML if available, else fallback to CPU
-            if 'CoreMLExecutionProvider' in available_providers:
-                providers = ['CoreMLExecutionProvider', 'CPUExecutionProvider']
-                print("Using CoreMLExecutionProvider for ONNX Runtime.")
-            else:
-                providers = ['CPUExecutionProvider']
-                print("Using CPUExecutionProvider for ONNX Runtime.")
-
-            # Initialize InsightFace app with providers
+            # Initialize InsightFace app
             self.app = FaceAnalysis(name='buffalo_l')
-            self.app.prepare(ctx_id=0, det_size=(640, 640), providers=providers)
-
-            self.logger.info(f"InsightFace initialized successfully with providers: {providers}")
+            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            
+            # For Apple Silicon, we'll use CPU provider with optimizations
+            providers = ['CPUExecutionProvider']
+            
+            self.logger.info("InsightFace initialized successfully")
             self.initialized = True
-
+            
         except Exception as e:
             self.logger.error(f"Failed to initialize InsightFace: {e}")
             raise
