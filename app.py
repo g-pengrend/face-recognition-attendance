@@ -149,7 +149,7 @@ def release_camera():
         camera = None
 
 def detection_loop():
-    """Detection loop with smart rotating face sampling"""
+    """Detection loop with smart rotating face sampling and performance monitoring"""
     global detection_active, face_system, attendance_manager, face_sampling_manager, current_frame, current_faces
     
     camera = get_camera()
@@ -157,9 +157,10 @@ def detection_loop():
         logger.error("Failed to open camera")
         return
     
-    logger.info("Starting detection loop with smart face sampling")
+    logger.info("Starting detection loop with performance monitoring")
     
     while detection_active:
+        loop_start_time = time.time()
         ret, frame = camera.read()
         if not ret:
             logger.warning("Failed to read frame from camera")
@@ -170,9 +171,15 @@ def detection_loop():
             # Store current frame for photo capture
             current_frame = frame.copy()
             
-            # Detect all faces in the frame
+            # Detect all faces in the frame with timing
+            detection_start = time.time()
             all_faces = face_system.detect_faces(frame)
+            detection_time = (time.time() - detection_start) * 1000  # Convert to milliseconds
             current_faces = all_faces  # Store for photo capture
+            
+            # Log performance if detection is slow
+            if detection_time > 100:  # More than 100ms
+                logger.warning(f"Slow face detection: {detection_time:.1f}ms for {len(all_faces)} faces")
             
             # Process faces immediately for faster attendance recording
             for face in all_faces:
@@ -186,6 +193,11 @@ def detection_loop():
                         logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
                     else:
                         logger.warning(f"Failed to mark attendance for {face['student_name']}")
+            
+            # Calculate total loop time
+            total_loop_time = (time.time() - loop_start_time) * 1000
+            if total_loop_time > 200:  # More than 200ms total
+                logger.warning(f"Slow detection loop: {total_loop_time:.1f}ms total")
             
             time.sleep(0.1)  # Reduced sleep time for faster response
             

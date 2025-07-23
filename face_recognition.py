@@ -8,7 +8,8 @@ from datetime import datetime
 import logging
 from typing import List
 
-# Set ONNX Runtime environment variables BEFORE importing InsightFace
+# Set environment variables for Apple Silicon optimization BEFORE importing InsightFace
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 os.environ['ONNXRUNTIME_PROVIDER_NAMES'] = 'CoreMLExecutionProvider,CPUExecutionProvider'
 
 class FaceRecognitionSystem:
@@ -184,15 +185,16 @@ class FaceRecognitionSystem:
         try:
             import onnxruntime as ort
             available_providers = ort.get_available_providers()
-            print("ONNX Runtime available providers:", available_providers)
+            self.logger.info(f"ONNX Runtime available providers: {available_providers}")
             
             # Initialize InsightFace app (providers are set via environment variable)
             self.app = FaceAnalysis(name='buffalo_l')
-            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            self.app.prepare(ctx_id=-1, det_size=(640, 640))  # Use CPU context, CoreML handles GPU
             
             # Check which providers are actually being used
-            print("InsightFace initialized successfully")
-            print("Note: CoreML provider preference is set via environment variable")
+            self.logger.info("InsightFace initialized successfully")
+            self.logger.info("Note: CoreML provider preference is set via environment variable")
+            self.logger.info("Some operations may use CPU, but CoreML will be used where possible")
             self.initialized = True
             
         except Exception as e:
