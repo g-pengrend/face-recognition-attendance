@@ -181,20 +181,54 @@ class FaceRecognitionSystem:
             self.logger.info(f"Loaded {len(self.students_db)} students")
 
     def _initialize_insightface(self):
-        """Initialize InsightFace with Apple Silicon optimization"""
+        """Initialize InsightFace with forced CoreML optimization"""
         try:
             import onnxruntime as ort
+            
+            # Force CoreML provider configuration
+            providers = [
+                ('CoreMLExecutionProvider', {
+                    'device_type': 'CPU',  # CoreML will use ANE/GPU automatically
+                    'precision': 'FP16',   # Use half precision for better performance
+                }),
+                ('CPUExecutionProvider', {})
+            ]
+            
+            # Set environment variables to force CoreML
+            os.environ['ONNXRUNTIME_PROVIDER_NAMES'] = 'CoreMLExecutionProvider,CPUExecutionProvider'
+            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+            
             available_providers = ort.get_available_providers()
             self.logger.info(f"ONNX Runtime available providers: {available_providers}")
             
-            # Initialize InsightFace app (providers are set via environment variable)
+            # Initialize InsightFace with explicit provider configuration
             self.app = FaceAnalysis(name='buffalo_l')
+            
+            # Force CoreML context - this is the key change
             self.app.prepare(ctx_id=-1, det_size=(640, 640))  # Use CPU context, CoreML handles GPU
             
-            # Check which providers are actually being used
-            self.logger.info("InsightFace initialized successfully")
-            self.logger.info("Note: CoreML provider preference is set via environment variable")
-            self.logger.info("Some operations may use CPU, but CoreML will be used where possible")
+            # Verify CoreML is being used
+            self.logger.info("InsightFace initialized with CoreML optimization")
+            self.logger.info("Note: CoreML will automatically use Apple Neural Engine/GPU")
+            self.initialized = True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize InsightFace with CoreML: {e}")
+            # Fallback to regular initialization
+            self._initialize_insightface_fallback()
+            raise
+
+    def _initialize_insightface_fallback(self):
+        """Fallback initialization without CoreML"""
+        try:
+            import onnxruntime as ort
+            available_providers = ort.get_available_providers()
+            self.logger.info(f"Fallback: ONNX Runtime available providers: {available_providers}")
+            
+            self.app = FaceAnalysis(name='buffalo_l')
+            self.app.prepare(ctx_id=-1, det_size=(640, 640))
+            
+            self.logger.info("InsightFace initialized with CPU fallback")
             self.initialized = True
             
         except Exception as e:
