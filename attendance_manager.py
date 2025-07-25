@@ -126,7 +126,7 @@ class AttendanceManager:
             session_start_time = datetime.now().isoformat()
         
         self.current_session = {
-            'id': session_name,
+            'session_id': session_name,
             'session_name': session_name, # Added session_name
             'class_name': class_name, # Added class_name
             'start_time': datetime.now().isoformat(),  # Detection start time
@@ -156,7 +156,7 @@ class AttendanceManager:
         # Save session data
         self._save_session()
         
-        session_id = self.current_session['id']
+        session_id = self.current_session['session_id']
         self.logger.info(f"Ended attendance session: {session_id}")
         
         # Clear current session
@@ -214,7 +214,7 @@ class AttendanceManager:
         self.logger.info(f"Marked attendance for {student_name} (confidence: {confidence:.2f}, lateness: {lateness_info.get('status', 'Unknown')})")
         self._save_session()
         if self.current_session:
-            self.export_to_csv(self.current_session['id'])
+            self.export_to_csv(self.current_session['session_id'])
         return True
     
     def get_current_attendance(self) -> Dict:
@@ -240,7 +240,7 @@ class AttendanceManager:
             attendance_with_lateness[student_name] = student_data
         
         return {
-            'session_id': self.current_session['id'],
+            'session_id': self.current_session['session_id'],
             'start_time': self.current_session['start_time'],
             'session_start_time': session_start_time,
             'present_students': self.current_session['present_students'],
@@ -282,7 +282,7 @@ class AttendanceManager:
             lateness_stats = self._calculate_lateness_statistics(session_data)
             
             summary = {
-                'session_id': session_data['id'],
+                'session_id': session_data['session_id'],
                 'start_time': session_data['start_time'],
                 'session_start_time': session_start_time,
                 'end_time': session_data['end_time'],
@@ -455,7 +455,7 @@ class AttendanceManager:
             # Convert NumPy types before saving
             session_data = self._convert_numpy_types(self.current_session)
             
-            session_file = os.path.join(self.logs_folder, f"{self.current_session['id']}.json")
+            session_file = os.path.join(self.logs_folder, f"{self.current_session['session_id']}.json")
             with open(session_file, 'w') as f:
                 json.dump(session_data, f, indent=2)
             

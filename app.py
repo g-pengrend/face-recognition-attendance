@@ -833,6 +833,26 @@ def load_session():
         session = json.load(f)
     return jsonify({'session': session})
 
+@app.route('/api/resume-session', methods=['POST'])
+def resume_session():
+    """Resume a previous session by session_id"""
+    global attendance_manager
+    try:
+        session_id = request.json.get('session_id')
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+        path = os.path.join('attendance_logs', f"{session_id}.json")
+        if not os.path.exists(path):
+            return jsonify({'error': 'Session not found'}), 404
+        with open(path) as f:
+            session = json.load(f)
+        # Set as current session in attendance_manager
+        attendance_manager.current_session = session
+        return jsonify({'success': True, 'session': session})
+    except Exception as e:
+        logger.error(f"Error resuming session: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # Update the static file serving route
 @app.route('/temp/<filename>')
 def serve_temp_file(filename):
