@@ -765,19 +765,55 @@
                         </div>
                         <div class="col-md-6">
                             <div class="alert alert-info">
-                                <h6><i class="fas fa-info-circle"></i> Expected CSV Format:</h6>
-                                <p class="mb-2">Your CSV file should have these columns:</p>
-                                <ul class="mb-2">
-                                    <li><strong>Serial</strong>: Student number (e.g., 01, 02, 03...)</li>
-                                    <li><strong>Name</strong>: Student's full name</li>
+                                <h6><i class="fas fa-info-circle"></i> CSV Format Requirements:</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="mb-2"><strong>Required Columns:</strong></p>
+                                        <ul class="mb-2">
+                                            <li><code>Serial</code> - Student number</li>
+                                            <li><code>Name</code> - Student's full name</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p class="mb-2"><strong>Example:</strong></p>
+                                        <code class="small">
+                                            Serial,Name<br>
+                                            01,John Doe<br>
+                                            02,Jane Smith
+                                        </code>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-warning">
+                                <h6><i class="fas fa-exclamation-triangle"></i> Important Warnings:</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="mb-1"><strong>CCSTARS Export:</strong></p>
+                                        <ul class="mb-2 small">
+                                            <li>Export student list from CCSTARS</li>
+                                            <li>Ensure proper column headers</li>
+                                            <li>Check data formatting</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p class="mb-1"><strong>CSV Formatting:</strong></p>
+                                        <ul class="mb-2 small">
+                                            <li>No commas in student names</li>
+                                            <li>No special characters</li>
+                                            <li>Use leading zeros (01, 02...)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-success">
+                                <h6><i class="fas fa-check-circle"></i> What Happens Next:</h6>
+                                <ul class="mb-0 small">
+                                    <li>Student folders created: <code>01_John Doe/</code>, <code>02_Jane Smith/</code></li>
+                                    <li>You can then add student photos to these folders</li>
+                                    <li>Students will appear in numerical order in the system</li>
                                 </ul>
-                                <p class="mb-0"><strong>Example:</strong></p>
-                                <code>
-                                    Serial,Name<br>
-                                    01,John Doe<br>
-                                    02,Jane Smith<br>
-                                    03,Bob Johnson
-                                </code>
                             </div>
                         </div>
                     </div>

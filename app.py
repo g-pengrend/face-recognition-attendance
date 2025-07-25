@@ -874,6 +874,105 @@ def serve_temp_file(filename):
     """Serve temporary files (screenshots and thumbnails)"""
     return send_file(os.path.join('temp', filename))
 
+@app.route('/api/create-class', methods=['POST'])
+def create_class():
+    """Create a new class from CSV file"""
+    try:
+        class_name = request.form.get('class_name')
+        csv_file = request.files.get('csv_file')
+        
+        if not class_name:
+            return jsonify({'error': 'Class name is required'}), 400
+        
+        if not csv_file:
+            return jsonify({'error': 'CSV file is required'}), 400
+        
+        # Validate file extension
+        if not csv_file.filename.lower().endswith('.csv'):
+            return jsonify({'error': 'File must be a CSV'}), 400
+        
+        # Create class directory
+        class_folder = os.path.join('students', class_name)
+        if os.path.exists(class_folder):
+            return jsonify({'error': f'Class "{class_name}" already exists'}), 400
+        
+        os.makedirs(class_folder, exist_ok=True)
+        
+        # Save uploaded CSV temporarily
+        temp_csv_path = os.path.join(tempfile.gettempdir(), f'temp_{class_name}.csv')
+        csv_file.save(temp_csv_path)
+        
+        students_count = 0
+        errors = []
+        
+        try:
+            # Read CSV and create student folders
+            with open(temp_csv_path, newline='', encoding='utf-8-sig') as csvfile:
+                reader = csv.DictReader(csvfile)
+                
+                # Validate CSV structure
+                if 'Serial' not in reader.fieldnames or 'Name' not in reader.fieldnames:
+                    return jsonify({'error': 'CSV must contain "Serial" and "Name" columns'}), 400
+                
+                for row_num, row in enumerate(reader, start=2):  # Start at 2 for row numbers
+                    try:
+                        serial = row['Serial'].strip()
+                        name = row['Name'].strip()
+                        
+                        if not serial or not name:
+                            errors.append(f"Row {row_num}: Missing Serial or Name")
+                            continue
+                        
+                        folder_name = f"{serial}_{name}"
+                        folder_path = os.path.join(class_folder, folder_name)
+                        
+                        # Check for invalid characters in folder name
+                        invalid_chars = '<>:"/\\|?*'
+                        if any(char in folder_name for char in invalid_chars):
+                            errors.append(f"Row {row_num}: Invalid characters in name '{folder_name}'")
+                            continue
+                        
+                        os.makedirs(folder_path, exist_ok=True)
+                        students_count += 1
+                        
+                    except Exception as e:
+                        errors.append(f"Row {row_num}: {str(e)}")
+                
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_csv_path):
+                os.remove(temp_csv_path)
+        
+        if errors:
+            # If there were errors, clean up the class folder
+            if os.path.exists(class_folder):
+                shutil.rmtree(class_folder)
+            
+            error_msg = f"CSV processing failed with {len(errors)} errors:\n" + "\n".join(errors[:5])  # Show first 5 errors
+            if len(errors) > 5:
+                error_msg += f"\n... and {len(errors) - 5} more errors"
+            
+            return jsonify({'error': error_msg}), 400
+        
+        if students_count == 0:
+            # Clean up empty class folder
+            if os.path.exists(class_folder):
+                shutil.rmtree(class_folder)
+            return jsonify({'error': 'No valid students found in CSV'}), 400
+        
+        logger.info(f"Created class '{class_name}' with {students_count} students")
+        
+        return jsonify({
+            'success': True,
+            'class_name': class_name,
+            'students_count': students_count,
+            'message': f'Class "{class_name}" created successfully with {students_count} students'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating class: {e}")
+        return jsonify({'error': f'Error creating class: {str(e)}'}), 500
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Not found'}), 404
