@@ -376,6 +376,22 @@
             font-weight: 600;
             vertical-align: middle;
         }
+
+        /* Improve dropdown behavior */
+        .form-select:focus {
+            border-color: #4facfe;
+            box-shadow: 0 0 0 0.2rem rgba(79, 172, 254, 0.25);
+        }
+
+        .form-select option:hover {
+            background-color: #e9ecef;
+        }
+
+        /* Style for selected student input */
+        .student-selected {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
     </style>
 </head>
 <body>
@@ -1548,7 +1564,7 @@
                                                 <i class="fas fa-times"></i>
                                             </button>
                                         </div>
-                                        <select class="form-select mt-1" id="studentSelect_${face.index}" size="5">
+                                        <select class="form-select mt-1" id="studentSelect_${face.index}" size="5" onchange="handleStudentSelection(${face.index}, this.value)">
                                             <option value="">-- Select existing student or type new name --</option>
                                             ${existingStudents.map(student => 
                                                 `<option value="${student}" class="student-option">${student}</option>`
@@ -1613,22 +1629,52 @@
             }
         }
 
-        // Add a face as a student (uses dropdown or text input)
+        // Enhanced handleStudentSelection function
+        function handleStudentSelection(faceIndex, selectedStudent) {
+            const select = document.getElementById(`studentSelect_${faceIndex}`);
+            const input = document.getElementById(`newStudentName_${faceIndex}`);
+            
+            if (selectedStudent) {
+                // Update the input field with the selected student name
+                input.value = selectedStudent;
+                
+                // Add visual feedback that a student was selected
+                input.classList.add('student-selected');
+                
+                // Clear the dropdown selection
+                select.value = "";
+                
+                // Focus on the input field
+                input.focus();
+                
+                // Remove the visual feedback after a short delay
+                setTimeout(() => {
+                    input.classList.remove('student-selected');
+                }, 2000);
+            }
+        }
+
+        // Enhanced addFaceAsStudent function
         async function addFaceAsStudent(faceIndex) {
-            // Prefer dropdown if selected, otherwise use text input
             const select = document.getElementById(`studentSelect_${faceIndex}`);
             const input = document.getElementById(`newStudentName_${faceIndex}`);
             let studentName = select.value || input.value.trim();
+            
             if (!studentName) {
                 showAlert('danger', 'Please select or enter a student name.');
                 return;
             }
 
-            // Always treat as "add to existing" if dropdown is used, otherwise as new if text input is used
             const isNewStudent = !select.value;
             const currentClass = document.getElementById('classSelect').value;
 
             try {
+                // Show loading state
+                const addButton = event.target;
+                const originalText = addButton.innerHTML;
+                addButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+                addButton.disabled = true;
+
                 const response = await fetch('/api/save-face-photo', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1639,10 +1685,19 @@
                         class_name: currentClass
                     })
                 });
+                
                 const result = await response.json();
+                
                 if (result.success) {
                     showAlert('success', result.message || 'Face photo saved!');
                     loadStudents();
+                    
+                    // Clear the form fields
+                    input.value = '';
+                    select.value = '';
+                    
+                    // Optionally close the modal or show success message
+                    // You can add logic here to close the modal or refresh the face list
                 } else {
                     showAlert('danger', result.error || 'Failed to save face photo.');
                 }
