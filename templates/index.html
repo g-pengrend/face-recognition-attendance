@@ -438,15 +438,18 @@
                     <span class="status-indicator" id="systemStatus"></span>
                     <span id="statusText">System Status</span>
                 </div>
-                <!-- Add class selection with better styling -->
+                <!-- Replace the existing class-select-container with this: -->
                 <div class="class-select-container">
                     <label for="classSelect" class="class-label">
                         <i class="fas fa-chalkboard-teacher"></i>
-                        Select Class:
+                        Class:
                     </label>
                     <select id="classSelect" class="class-selector" onchange="changeClass()">
                         <option value="">Loading classes...</option>
                     </select>
+                    <button class="btn btn-outline-light btn-sm ms-2" onclick="showCreateClassModal()">
+                        <i class="fas fa-plus"></i> Create New Class
+                    </button>
                 </div>
                 
                 <!-- Compact stats display -->
@@ -734,6 +737,64 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Class Modal -->
+    <div class="modal fade" id="createClassModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create New Class</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="newClassName" class="form-label">Class Name</label>
+                                <input type="text" class="form-control" id="newClassName" placeholder="e.g., Math 101, Computer Science" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="csvFile" class="form-label">Student CSV File</label>
+                                <input type="file" class="form-control" id="csvFile" accept=".csv" required>
+                                <div class="form-text">Upload a CSV file with student information</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-info-circle"></i> Expected CSV Format:</h6>
+                                <p class="mb-2">Your CSV file should have these columns:</p>
+                                <ul class="mb-2">
+                                    <li><strong>Serial</strong>: Student number (e.g., 01, 02, 03...)</li>
+                                    <li><strong>Name</strong>: Student's full name</li>
+                                </ul>
+                                <p class="mb-0"><strong>Example:</strong></p>
+                                <code>
+                                    Serial,Name<br>
+                                    01,John Doe<br>
+                                    02,Jane Smith<br>
+                                    03,Bob Johnson
+                                </code>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="createClassProgress" style="display: none;">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Creating class...</span>
+                            </div>
+                            <p class="mt-2">Creating class folders...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="createNewClass()">
+                        <i class="fas fa-plus"></i> Create Class
+                    </button>
                 </div>
             </div>
         </div>
@@ -2047,6 +2108,84 @@
             } catch (error) {
                 const resumeSessionList = document.getElementById('resumeSessionList');
                 resumeSessionList.innerHTML = '<p class="text-danger">Error resuming session: ' + error.message + '</p>';
+            }
+        }
+
+        // Show create class modal
+        function showCreateClassModal() {
+            // Clear previous form data
+            document.getElementById('newClassName').value = '';
+            document.getElementById('csvFile').value = '';
+            document.getElementById('createClassProgress').style.display = 'none';
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('createClassModal'));
+            modal.show();
+        }
+
+        // Create new class from CSV
+        async function createNewClass() {
+            const className = document.getElementById('newClassName').value.trim();
+            const csvFile = document.getElementById('csvFile').files[0];
+            
+            // Validation
+            if (!className) {
+                showAlert('danger', 'Please enter a class name.');
+                return;
+            }
+            
+            if (!csvFile) {
+                showAlert('danger', 'Please select a CSV file.');
+                return;
+            }
+            
+            // Check file extension
+            if (!csvFile.name.toLowerCase().endsWith('.csv')) {
+                showAlert('danger', 'Please select a valid CSV file.');
+                return;
+            }
+            
+            // Show progress
+            document.getElementById('createClassProgress').style.display = 'block';
+            
+            try {
+                // Create FormData
+                const formData = new FormData();
+                formData.append('class_name', className);
+                formData.append('csv_file', csvFile);
+                
+                // Send to backend
+                const response = await fetch('/api/create-class', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', `Class "${className}" created successfully with ${result.students_count} students!`);
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('createClassModal'));
+                    modal.hide();
+                    
+                    // Refresh classes list
+                    await loadClasses();
+                    
+                    // Select the new class
+                    const classSelect = document.getElementById('classSelect');
+                    classSelect.value = className;
+                    await changeClass();
+                    
+                } else {
+                    showAlert('danger', result.error || 'Failed to create class.');
+                }
+                
+            } catch (error) {
+                showAlert('danger', 'Error creating class: ' + error.message);
+            } finally {
+                // Hide progress
+                document.getElementById('createClassProgress').style.display = 'none';
             }
         }
     </script>

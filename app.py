@@ -9,6 +9,9 @@ import threading
 import time
 import logging
 import random # Added for smart sampling
+import csv
+import tempfile
+import shutil
 
 from face_recognition import FaceRecognitionSystem
 from attendance_manager import AttendanceManager
