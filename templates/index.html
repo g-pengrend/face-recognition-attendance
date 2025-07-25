@@ -1450,7 +1450,12 @@
         function showAlert(type, message) {
             const alertDiv = document.createElement('div');
             alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            
+            // Calculate position to stack notifications vertically
+            const existingAlerts = document.querySelectorAll('.alert.position-fixed');
+            const topPosition = 20 + (existingAlerts.length * 80); // 80px spacing between alerts
+            
+            alertDiv.style.cssText = `top: ${topPosition}px; right: 20px; z-index: 9999; min-width: 300px; max-width: 400px;`;
             alertDiv.innerHTML = `
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
