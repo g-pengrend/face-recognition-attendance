@@ -392,6 +392,32 @@
             background-color: #d4edda;
             border-color: #c3e6cb;
         }
+
+        .student-dropdown {
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            background: white;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .selected-student-display {
+            margin-top: 10px;
+        }
+
+        .selected-student-display .alert {
+            margin-bottom: 0;
+            padding: 8px 12px;
+        }
+
+        .student-dropdown select {
+            border: none;
+            box-shadow: none;
+        }
+
+        .student-dropdown select:focus {
+            box-shadow: none;
+        }
     </style>
 </head>
 <body>
@@ -1564,14 +1590,24 @@
                                                 <i class="fas fa-times"></i>
                                             </button>
                                         </div>
-                                        <select class="form-select mt-1" id="studentSelect_${face.index}" size="5" onchange="handleStudentSelection(${face.index}, this.value)">
-                                            <option value="">-- Select existing student or type new name --</option>
-                                            ${existingStudents.map(student => 
-                                                `<option value="${student}" class="student-option">${student}</option>`
-                                            ).join('')}
-                                        </select>
+                                        <div id="studentDropdown_${face.index}" class="student-dropdown" style="display:none;">
+                                            <select class="form-select mt-1" id="studentSelect_${face.index}" size="5" onchange="selectExistingStudent(${face.index}, this.value)">
+                                                <option value="">-- Select existing student --</option>
+                                                ${existingStudents.map(student => 
+                                                    `<option value="${student}" class="student-option">${student}</option>`
+                                                ).join('')}
+                                            </select>
+                                        </div>
+                                        <div id="selectedStudent_${face.index}" class="selected-student-display" style="display:none;">
+                                            <div class="alert alert-info d-flex justify-content-between align-items-center">
+                                                <span><i class="fas fa-user"></i> <strong id="selectedStudentName_${face.index}"></strong></span>
+                                                <button class="btn btn-sm btn-outline-secondary" onclick="changeStudentSelection(${face.index})">
+                                                    <i class="fas fa-edit"></i> Change
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="mb-2">
+                                    <div class="mb-2" id="newStudentSection_${face.index}">
                                         <label class="form-label">Or enter new student name:</label>
                                         <input type="text" class="form-control" id="newStudentName_${face.index}" 
                                                placeholder="Enter new student name">
@@ -1606,6 +1642,11 @@
                 // Ensure modal is fully removed from DOM on close to prevent tab freeze
                 document.getElementById('unknownFacesModal').addEventListener('hidden.bs.modal', function () {
                     this.remove();
+                });
+
+                // Initialize dropdown behavior for each face
+                unknownFaces.forEach((face, index) => {
+                    toggleStudentDropdown(face.index);
                 });
             });
         }
@@ -1654,18 +1695,29 @@
             }
         }
 
-        // Enhanced addFaceAsStudent function
+        // Add a face as a student (handles both existing and new students)
         async function addFaceAsStudent(faceIndex) {
-            const select = document.getElementById(`studentSelect_${faceIndex}`);
-            const input = document.getElementById(`newStudentName_${faceIndex}`);
-            let studentName = select.value || input.value.trim();
+            const selectedDisplay = document.getElementById(`selectedStudent_${faceIndex}`);
+            const newStudentInput = document.getElementById(`newStudentName_${faceIndex}`);
+            
+            let studentName = '';
+            let isNewStudent = false;
+            
+            // Check if an existing student is selected
+            if (selectedDisplay.style.display !== 'none') {
+                studentName = document.getElementById(`selectedStudentName_${faceIndex}`).textContent;
+                isNewStudent = false;
+            } else {
+                // Check if a new student name is entered
+                studentName = newStudentInput.value.trim();
+                isNewStudent = true;
+            }
             
             if (!studentName) {
-                showAlert('danger', 'Please select or enter a student name.');
+                showAlert('danger', 'Please select an existing student or enter a new student name.');
                 return;
             }
 
-            const isNewStudent = !select.value;
             const currentClass = document.getElementById('classSelect').value;
 
             try {
@@ -1692,17 +1744,26 @@
                     showAlert('success', result.message || 'Face photo saved!');
                     loadStudents();
                     
-                    // Clear the form fields
-                    input.value = '';
-                    select.value = '';
+                    // Mark this face as completed
+                    const faceCard = addButton.closest('.card');
+                    faceCard.style.opacity = '0.5';
+                    addButton.innerHTML = '<i class="fas fa-check"></i> Added';
+                    addButton.classList.remove('btn-primary');
+                    addButton.classList.add('btn-success');
+                    addButton.disabled = true;
                     
-                    // Optionally close the modal or show success message
-                    // You can add logic here to close the modal or refresh the face list
                 } else {
                     showAlert('danger', result.error || 'Failed to save face photo.');
+                    // Reset button state
+                    addButton.innerHTML = originalText;
+                    addButton.disabled = false;
                 }
             } catch (error) {
                 showAlert('danger', 'Error saving face photo: ' + error.message);
+                // Reset button state
+                const addButton = event.target;
+                addButton.innerHTML = originalText;
+                addButton.disabled = false;
             }
         }
 
@@ -1782,17 +1843,94 @@
             const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
             const filter = searchInput.value.toLowerCase();
             const select = document.getElementById(`studentSelect_${faceIndex}`);
+            const dropdown = document.getElementById(`studentDropdown_${faceIndex}`);
+            
+            // Show dropdown when typing
+            if (filter.length > 0) {
+                dropdown.style.display = 'block';
+            }
+            
             Array.from(select.options).forEach(option => {
                 if (option.value === "") return; // Always show the placeholder
                 option.style.display = option.text.toLowerCase().includes(filter) ? "" : "none";
             });
         }
 
-        // Clear search box and reset dropdown
+        // Clear search and reset dropdown
         function clearStudentSearch(faceIndex) {
             const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
+            const dropdown = document.getElementById(`studentDropdown_${faceIndex}`);
+            
             searchInput.value = "";
             filterStudentDropdown(faceIndex);
+            searchInput.focus();
+        }
+
+        // Show/hide dropdown when search input is focused
+        function toggleStudentDropdown(faceIndex) {
+            const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
+            const dropdown = document.getElementById(`studentDropdown_${faceIndex}`);
+            const selectedDisplay = document.getElementById(`selectedStudent_${faceIndex}`);
+            
+            // Show dropdown when search input is focused
+            searchInput.addEventListener('focus', function() {
+                if (!selectedDisplay.style.display || selectedDisplay.style.display === 'none') {
+                    dropdown.style.display = 'block';
+                }
+            });
+            
+            // Hide dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        }
+
+        // Select an existing student from dropdown
+        function selectExistingStudent(faceIndex, selectedStudent) {
+            if (!selectedStudent) return;
+            
+            const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
+            const dropdown = document.getElementById(`studentDropdown_${faceIndex}`);
+            const selectedDisplay = document.getElementById(`selectedStudent_${faceIndex}`);
+            const selectedName = document.getElementById(`selectedStudentName_${faceIndex}`);
+            const newStudentSection = document.getElementById(`newStudentSection_${faceIndex}`);
+            
+            // Hide dropdown and search input
+            dropdown.style.display = 'none';
+            searchInput.style.display = 'none';
+            
+            // Show selected student display
+            selectedName.textContent = selectedStudent;
+            selectedDisplay.style.display = 'block';
+            
+            // Hide the "new student" section since we selected an existing one
+            newStudentSection.style.display = 'none';
+            
+            // Clear the new student input
+            document.getElementById(`newStudentName_${faceIndex}`).value = '';
+        }
+
+        // Change student selection (go back to search)
+        function changeStudentSelection(faceIndex) {
+            const searchInput = document.getElementById(`studentSearch_${faceIndex}`);
+            const dropdown = document.getElementById(`studentDropdown_${faceIndex}`);
+            const selectedDisplay = document.getElementById(`selectedStudent_${faceIndex}`);
+            const newStudentSection = document.getElementById(`newStudentSection_${faceIndex}`);
+            
+            // Show search input and dropdown
+            searchInput.style.display = 'block';
+            searchInput.value = '';
+            dropdown.style.display = 'block';
+            
+            // Hide selected student display
+            selectedDisplay.style.display = 'none';
+            
+            // Show the "new student" section
+            newStudentSection.style.display = 'block';
+            
+            // Focus on search input
             searchInput.focus();
         }
 
