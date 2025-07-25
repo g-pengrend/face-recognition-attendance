@@ -671,6 +671,32 @@
         <span id="attendanceToastText"></span>
     </div>
 
+    <!-- Resume Session Modal -->
+    <div class="modal fade" id="resumeSessionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Resume Session</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Select a session to resume:</p>
+                    <div id="resumeSessionList">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading sessions...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentSessionId = null;
@@ -763,12 +789,24 @@
 
             // Handle resume session button click
             document.getElementById('resumeSessionBtn').onclick = async function() {
-                // Fetch available sessions for the selected class
-                const className = document.getElementById('classSelect').value;
-                const res = await fetch('/api/sessions?class=' + encodeURIComponent(className));
-                const data = await res.json();
-                // Show a modal or dropdown to let the user pick a session to resume
-                showResumeSessionModal(data.sessions);
+                try {
+                    // Fetch available sessions for the selected class
+                    const className = document.getElementById('classSelect').value;
+                    const response = await fetch('/api/sessions');
+                    const data = await response.json();
+                    
+                    // Filter sessions by class if needed
+                    let sessions = data.sessions || [];
+                    if (className) {
+                        sessions = sessions.filter(session => session.class_name === className);
+                    }
+                    
+                    // Show modal with available sessions
+                    showResumeSessionModal(sessions);
+                    
+                } catch (error) {
+                    showAlert('danger', 'Error loading sessions: ' + error.message);
+                }
             };
         });
                 
@@ -1701,6 +1739,111 @@
             searchInput.value = "";
             filterStudentDropdown(faceIndex);
             searchInput.focus();
+        }
+
+        // Show resume session modal with available sessions
+        function showResumeSessionModal(sessions) {
+            const resumeSessionList = document.getElementById('resumeSessionList');
+            
+            if (!sessions || sessions.length === 0) {
+                resumeSessionList.innerHTML = '<p class="text-muted">No sessions found for this class.</p>';
+            } else {
+                let html = '';
+                sessions.forEach(session => {
+                    const startTime = new Date(session.start_time).toLocaleString();
+                    const presentCount = session.present_students || 0;
+                    const totalCount = session.total_students || 0;
+                    
+                    html += `
+                        <div class="session-item" onclick="resumeSession('${session.session_id}')">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">${session.session_name || session.session_id}</h6>
+                                    <small class="text-muted">Started: ${startTime}</small>
+                                </div>
+                                <div class="text-end">
+                                    <div class="fw-bold">${presentCount}/${totalCount}</div>
+                                    <small class="text-muted">Click to resume</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                resumeSessionList.innerHTML = html;
+            }
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('resumeSessionModal'));
+            modal.show();
+        }
+
+        // Resume a specific session
+        async function resumeSession(sessionId) {
+            try {
+                // Show loading state
+                const resumeSessionList = document.getElementById('resumeSessionList');
+                resumeSessionList.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Resuming session...</p></div>';
+                
+                // Call the resume session endpoint
+                const response = await fetch('/api/resume-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Close the modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('resumeSessionModal'));
+                    modal.hide();
+                    
+                    // Set the session as active
+                    currentSessionId = sessionId;
+                    isDetectionActive = true;
+                    
+                    // Update UI to show resumed session
+                    const startBtn = document.getElementById('startBtn');
+                    const stopBtn = document.getElementById('stopBtn');
+                    const sessionNameInput = document.getElementById('sessionName');
+                    const sessionStartTimeInput = document.getElementById('sessionStartTime');
+                    
+                    // Update form fields with session data
+                    if (result.session) {
+                        sessionNameInput.value = result.session.session_name || result.session.session_id;
+                        if (result.session.session_start_time) {
+                            // Convert ISO string to datetime-local format
+                            const sessionStartTime = new Date(result.session.session_start_time);
+                            const localDateTime = sessionStartTime.toISOString().slice(0, 16);
+                            sessionStartTimeInput.value = localDateTime;
+                        }
+                    }
+                    
+                    // Update button states
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    // Start attendance updates
+                    startAttendanceUpdates();
+                    
+                    // Update attendance display with resumed session data
+                    if (result.session && result.session.attendance) {
+                        updateLiveAttendanceFeed(result.session);
+                        updateAbsentStudentsList(result.session);
+                    }
+                    
+                    showAlert('success', `Session "${sessionId}" resumed successfully!`);
+                    
+                } else {
+                    resumeSessionList.innerHTML = '<p class="text-danger">Error: ' + (result.error || 'Failed to resume session') + '</p>';
+                }
+                
+            } catch (error) {
+                const resumeSessionList = document.getElementById('resumeSessionList');
+                resumeSessionList.innerHTML = '<p class="text-danger">Error resuming session: ' + error.message + '</p>';
+            }
         }
     </script>
 </body>

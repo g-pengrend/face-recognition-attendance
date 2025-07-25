@@ -353,9 +353,12 @@ def get_sessions():
                 sessions.append({
                     'session_id': session.get('session_id', fname.replace('.json', '')),
                     'session_name': session.get('session_name', ''),
+                    'class_name': session.get('class_name', ''),
                     'start_time': session.get('session_start_time', ''),
                     'active': session.get('active', False),
-                    'filename': fname
+                    'filename': fname,
+                    'present_students': len(session.get('attendance', {})),
+                    'total_students': session.get('total_students', 0)
                 })
     # Sort by start_time descending
     sessions.sort(key=lambda s: s['start_time'], reverse=True)
