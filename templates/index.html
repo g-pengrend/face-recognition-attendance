@@ -1821,7 +1821,7 @@
                         }
                     }
                     
-                    // Update button states
+                    // Update button states - detection is now active
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
                     
@@ -1834,7 +1834,7 @@
                         updateAbsentStudentsList(result.session);
                     }
                     
-                    showAlert('success', `Session "${sessionId}" resumed successfully!`);
+                    showAlert('success', `Session "${sessionId}" resumed successfully! Detection is now active.`);
                     
                 } else {
                     resumeSessionList.innerHTML = '<p class="text-danger">Error: ' + (result.error || 'Failed to resume session') + '</p>';

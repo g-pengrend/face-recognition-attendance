@@ -839,7 +839,7 @@ def load_session():
 @app.route('/api/resume-session', methods=['POST'])
 def resume_session():
     """Resume a previous session by session_id"""
-    global attendance_manager
+    global attendance_manager, detection_active, detection_thread
     try:
         session_id = request.json.get('session_id')
         if not session_id:
@@ -849,8 +849,17 @@ def resume_session():
             return jsonify({'error': 'Session not found'}), 404
         with open(path) as f:
             session = json.load(f)
+        
         # Set as current session in attendance_manager
         attendance_manager.current_session = session
+        
+        # Start detection loop if not already running
+        if not detection_active:
+            detection_active = True
+            detection_thread = threading.Thread(target=detection_loop, daemon=True)
+            detection_thread.start()
+            logger.info(f"Started detection loop for resumed session: {session_id}")
+        
         return jsonify({'success': True, 'session': session})
     except Exception as e:
         logger.error(f"Error resuming session: {e}")
