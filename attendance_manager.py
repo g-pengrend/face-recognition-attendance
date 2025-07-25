@@ -362,17 +362,16 @@ class AttendanceManager:
             with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 
-                # Write header
+                # Write header with reordered columns
                 writer.writerow([
                     'Student Name',
+                    'Minutes Late',
+                    'Lateness Category',
                     'First Seen',
                     'Last Seen',
                     'Confidence',
                     'Detection Count',
-                    'Duration (minutes)',
-                    'Lateness Status',
-                    'Minutes Late',
-                    'Lateness Category'
+                    'Duration (minutes)'
                 ])
                 
                 # Sort students by prefix number (00_, 01_, 02_, etc.)
@@ -390,30 +389,27 @@ class AttendanceManager:
                     key=lambda x: extract_student_number(x[0])
                 )
                 
-                # Write attendance data in sorted order
+                # Write attendance data in sorted order with reordered columns
                 for student_name, data in sorted_attendance:
                     duration = self._calculate_duration(data['first_seen'], data['last_seen'])
                     
                     # Get lateness information
-                    lateness_status = "Unknown"
                     minutes_late = 0
                     lateness_category = "Unknown"
                     
                     if 'lateness' in data:
-                        lateness_status = data['lateness'].get('status', 'Unknown')
                         minutes_late = data['lateness'].get('minutes_late', 0)
                         lateness_category = data['lateness'].get('category', 'Unknown')
                     
                     writer.writerow([
                         student_name,
+                        f"{minutes_late:.1f}",
+                        lateness_category,
                         data['first_seen'],
                         data['last_seen'],
                         f"{data['confidence']:.3f}",
                         data['detection_count'],
-                        duration,
-                        lateness_status,
-                        f"{minutes_late:.1f}",
-                        lateness_category
+                        f"{duration:.1f}"
                     ])
                 
                 # Write summary
