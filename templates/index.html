@@ -1189,49 +1189,60 @@
                                         <th>Last Seen</th>
                                         <th>Confidence</th>
                                         <th>Detections</th>
-                                        <th>Lateness</th> <!-- New column -->
+                                        <th>Lateness</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                    `;
-                    
-                    Object.entries(session.attendance).forEach(([student, data]) => {
-                        html += `
-                            <tr>
-                                <td><strong>${student}</strong></td>
-                                <td>${new Date(data.first_seen).toLocaleTimeString()}</td>
-                                <td>${new Date(data.last_seen).toLocaleTimeString()}</td>
-                                <td>${(data.confidence * 100).toFixed(1)}%</td>
-                                <td>${data.detection_count}</td>
-                                <td>
-                                    <span class="badge bg-${data.lateness?.color || 'secondary'}">
-                                        ${data.lateness?.status || 'Unknown'}
-                                    </span>
-                                </td>
-                            </tr>
-                        `;
-                    });
-                    
-                    html += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                }
-                
-                modalBody.innerHTML = html;
-                
-                const modal = new bootstrap.Modal(document.getElementById('sessionModal'));
-                modal.show();
-                
-            } catch (error) {
-                showAlert('danger', 'Error loading session details: ' + error.message);
+            `;
+            
+            // Sort students by prefix number
+            function extractStudentNumber(studentName) {
+                const match = studentName.match(/^(\d+)_/);
+                return match ? parseInt(match[1]) : Infinity;
             }
+            
+            const sortedEntries = Object.entries(session.attendance).sort((a, b) => {
+                return extractStudentNumber(a[0]) - extractStudentNumber(b[0]);
+            });
+            
+            sortedEntries.forEach(([student, data]) => {
+                html += `
+                    <tr>
+                        <td><strong>${student}</strong></td>
+                        <td>${new Date(data.first_seen).toLocaleTimeString()}</td>
+                        <td>${new Date(data.last_seen).toLocaleTimeString()}</td>
+                        <td>${(data.confidence * 100).toFixed(1)}%</td>
+                        <td>${data.detection_count}</td>
+                        <td>
+                            <span class="badge bg-${data.lateness?.color || 'secondary'}">
+                                ${data.lateness?.status || 'Unknown'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
         }
+        
+        modalBody.innerHTML = html;
+        
+        const modal = new bootstrap.Modal(document.getElementById('sessionModal'));
+        modal.show();
+        
+    } catch (error) {
+        showAlert('danger', 'Error loading session details: ' + error.message);
+    }
+}
 
         // Export session
         async function exportSession(sessionId) {
             try {
+                // This will trigger the CSV generation and download
                 window.open(`/api/export/${sessionId}`, '_blank');
             } catch (error) {
                 showAlert('danger', 'Error exporting session: ' + error.message);

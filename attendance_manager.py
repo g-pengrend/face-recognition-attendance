@@ -213,8 +213,6 @@ class AttendanceManager:
         
         self.logger.info(f"Marked attendance for {student_name} (confidence: {confidence:.2f}, lateness: {lateness_info.get('status', 'Unknown')})")
         self._save_session()
-        if self.current_session:
-            self.export_to_csv(self.current_session['session_id'])
         return True
     
     def get_current_attendance(self) -> Dict:
@@ -344,7 +342,7 @@ class AttendanceManager:
     
     def export_to_csv(self, session_id: str, output_path: Optional[str] = None) -> Optional[str]:
         """
-        Export attendance data to CSV with lateness information
+        Export attendance data to CSV with lateness information, sorted by student prefix number
         
         Args:
             session_id (str): Session ID to export
@@ -377,8 +375,23 @@ class AttendanceManager:
                     'Lateness Category'
                 ])
                 
-                # Write attendance data
-                for student_name, data in summary['attendance'].items():
+                # Sort students by prefix number (00_, 01_, 02_, etc.)
+                def extract_student_number(student_name):
+                    """Extract the numeric prefix from student name"""
+                    import re
+                    match = re.match(r'^(\d+)_', student_name)
+                    if match:
+                        return int(match.group(1))
+                    return float('inf')  # Put non-prefixed names at the end
+                
+                # Sort attendance data by student number
+                sorted_attendance = sorted(
+                    summary['attendance'].items(),
+                    key=lambda x: extract_student_number(x[0])
+                )
+                
+                # Write attendance data in sorted order
+                for student_name, data in sorted_attendance:
                     duration = self._calculate_duration(data['first_seen'], data['last_seen'])
                     
                     # Get lateness information
@@ -408,7 +421,7 @@ class AttendanceManager:
                 writer.writerow(['Summary'])
                 writer.writerow(['Session ID', summary['session_id']])
                 writer.writerow(['Detection Start Time', summary['start_time']])
-                writer.writerow(['Class Start Time', summary['session_start_time']])  # <-- Added this line
+                writer.writerow(['Class Start Time', summary['session_start_time']])
                 writer.writerow(['End Time', summary['end_time']])
                 writer.writerow(['Duration (minutes)', summary['duration_minutes']])
                 writer.writerow(['Total Students', summary['total_students']])
