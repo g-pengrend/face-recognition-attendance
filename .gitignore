@@ -1,0 +1,13 @@
+
+*.jpeg
+attendance_logs/attendance logs will be generated here.txt
+attendance_logs/attendance logs will be generated here.txt
+attendance_logs/AIPD1.json
+attendance_logs/.json
+/students/CI2401A
+/temp
+/attendance_logs
+.DS_Store
+AIPD_class.csv
+__pycache__/attendance_manager.cpython-39.pyc
+__pycache__/face_recognition.cpython-39.pyc
