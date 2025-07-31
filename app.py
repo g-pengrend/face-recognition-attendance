@@ -751,18 +751,19 @@ def set_class():
         # Try to load from cache first
         cached_students = load_from_cache(class_name, "students")
         if cached_students:
-            # Use cached data
-            face_system.students = cached_students.get('students', {})
-            face_system.student_names = cached_students.get('student_names', [])
-            face_system.current_class = class_name
+            # Use cached data - set the current class and restore students_db
+            success = face_system.set_current_class(class_name)
+            if success:
+                # Restore the cached students database
+                face_system.students_db = cached_students.get('students_db', {})
         else:
             # Load normally and cache
             success = face_system.set_current_class(class_name)
             if success:
                 # Cache the loaded data
                 cache_data = {
-                    'students': face_system.students,
-                    'student_names': face_system.student_names,
+                    'students_db': face_system.students_db,
+                    'student_names': face_system.get_students_list(),
                     'timestamp': datetime.now().isoformat()
                 }
                 save_to_cache(class_name, "students", cache_data)
@@ -770,12 +771,12 @@ def set_class():
                 return jsonify({'error': f'Failed to load class {class_name}'}), 400
         
         # Update attendance manager
-        attendance_manager.set_total_students(len(face_system.student_names))
+        attendance_manager.set_total_students(len(face_system.get_students_list()))
         
         return jsonify({
             'success': True,
             'message': f'Class {class_name} loaded successfully',
-            'students_count': len(face_system.student_names),
+            'students_count': len(face_system.get_students_list()),
             'cached': cached_students is not None
         })
         
