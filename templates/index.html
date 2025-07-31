@@ -2371,6 +2371,15 @@
                     
                     console.log('Detection status:', data); // Debug logging
                     
+                    // Only show overlays if detection is actually active
+                    if (!isDetectionActive) {
+                        // Hide all overlays if detection is not active
+                        idleOverlay.style.display = 'none';
+                        standbyIndicator.style.display = 'none';
+                        standbyOverlay.style.display = 'none';
+                        return;
+                    }
+                    
                     if (data.state === 'idle' && data.idle_overlay_active) {
                         // Show idle overlay (highest priority)
                         idleOverlay.style.display = 'flex';
@@ -2435,7 +2444,7 @@
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
                     
-                    // Hide ALL overlays immediately
+                    // Hide ALL overlays immediately and prevent them from showing again
                     document.getElementById('idleOverlay').style.display = 'none';
                     document.getElementById('standbyOverlay').style.display = 'none';
                     document.getElementById('standbyIndicator').style.display = 'none';
@@ -2451,10 +2460,14 @@
                     
                     showAlert('success', 'Detection resumed successfully!');
                     
-                    // Force a status check after a short delay to ensure overlays stay hidden
-                    setTimeout(() => {
-                        checkDetectionStatus();
-                    }, 1000);
+                    // Temporarily disable detection status checks to prevent overlay from reappearing
+                    if (statusUpdateInterval) {
+                        clearInterval(statusUpdateInterval);
+                        // Restart status updates after a delay to ensure backend has reset
+                        setTimeout(() => {
+                            startStatusUpdates();
+                        }, 3000); // Wait 3 seconds before resuming status checks
+                    }
                     
                 } else {
                     throw new Error(result.error || 'Failed to resume detection');
