@@ -1019,6 +1019,35 @@ def resume_session():
         logger.error(f"Error resuming session: {e}")
         return jsonify({'error': str(e)}), 500
 
+# Add this new endpoint after the existing routes
+@app.route('/api/resume-from-idle', methods=['POST'])
+def resume_from_idle():
+    """Resume detection from idle state"""
+    global is_idle, is_standby, idle_overlay_active, detection_active, last_face_detection_time, consecutive_no_faces_count
+    
+    try:
+        # Reset all idle-related variables
+        is_idle = False
+        is_standby = False
+        idle_overlay_active = False
+        detection_active = True
+        last_face_detection_time = time.time()
+        consecutive_no_faces_count = 0
+        
+        logger.info("Detection resumed from idle state")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Detection resumed from idle state'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error resuming from idle: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # Update the static file serving route
 @app.route('/temp/<filename>')
 def serve_temp_file(filename):

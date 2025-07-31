@@ -2380,6 +2380,13 @@
                         return;
                     }
                     
+                    // If we're in idle state but detection is active, something is wrong
+                    if (data.state === 'idle' && data.idle_overlay_active && isDetectionActive) {
+                        console.log('Warning: Detection is active but backend reports idle state');
+                        // Don't show idle overlay if we just resumed
+                        return;
+                    }
+                    
                     if (data.state === 'idle' && data.idle_overlay_active) {
                         // Show idle overlay (highest priority)
                         idleOverlay.style.display = 'flex';
@@ -2405,7 +2412,7 @@
                 });
         }
 
-        // Resume detection from idle state - using existing resume session endpoint
+        // Resume detection from idle state - using new dedicated endpoint
         async function resumeDetection() {
             const resumeBtn = event.target;
             const originalText = resumeBtn.innerHTML;
@@ -2415,15 +2422,12 @@
                 resumeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resuming...';
                 resumeBtn.disabled = true;
 
-                // Use the existing resume session endpoint with current session ID
-                const response = await fetch('/api/resume-session', {
+                // Use the new dedicated endpoint for resuming from idle
+                const response = await fetch('/api/resume-from-idle', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        session_id: currentSessionId // Use the current session ID
-                    })
+                    }
                 });
                 
                 if (!response.ok) {
@@ -2451,12 +2455,6 @@
                     
                     // Start attendance updates
                     startAttendanceUpdates();
-                    
-                    // Update attendance display with resumed session data
-                    if (result.session && result.session.attendance) {
-                        updateLiveAttendanceFeed(result.session);
-                        updateAbsentStudentsList(result.session);
-                    }
                     
                     showAlert('success', 'Detection resumed successfully!');
                     
