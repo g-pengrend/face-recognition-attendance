@@ -52,7 +52,7 @@ class FaceRecognitionSystem:
         
         return sorted(classes)
     
-    def set_current_class(self, class_name):
+    def set_current_class(self, class_name, use_cache=True):
         """Set the current class and load its students"""
         if class_name not in self.get_available_classes():
             self.logger.error(f"Class {class_name} not found")
@@ -60,8 +60,35 @@ class FaceRecognitionSystem:
         
         self.current_class = class_name
         self.students_db = {}  # Clear existing students
+        
+        if use_cache:
+            # Try to load from cache first
+            cached_data = self._load_from_cache(class_name)
+            if cached_data and self._is_cache_valid(class_name):
+                # Restore from cache
+                self.students_db = cached_data.get('students_db', {})
+                self.logger.info(f"Loaded class {class_name} from cache with {len(self.students_db)} students")
+                return True
+        
+        # Load from folder if no cache or cache invalid
         self._load_students_for_class(class_name)
-        self.logger.info(f"Switched to class: {class_name}")
+        
+        # Save to cache after loading
+        if use_cache:
+            self._save_to_cache(class_name)
+        
+        self.logger.info(f"Switched to class: {class_name} with {len(self.students_db)} students")
+        return True
+
+    def set_current_class_from_cache(self, class_name, cached_data):
+        """Set the current class using cached data without loading from folder"""
+        if class_name not in self.get_available_classes():
+            self.logger.error(f"Class {class_name} not found")
+            return False
+        
+        self.current_class = class_name
+        self.students_db = cached_data.get('students_db', {})
+        self.logger.info(f"Loaded class {class_name} from cache with {len(self.students_db)} students")
         return True
     
     def get_current_class(self):
@@ -674,8 +701,7 @@ def _save_to_cache(self, class_name):
     
     try:
         data = {
-            'students': self.students,
-            'student_names': self.student_names,
+            'students_db': self.students_db, # Save the entire students_db
             'timestamp': datetime.now().isoformat()
         }
         

@@ -751,14 +751,11 @@ def set_class():
         # Try to load from cache first
         cached_students = load_from_cache(class_name, "students")
         if cached_students:
-            # Use cached data - set the current class and restore students_db
-            success = face_system.set_current_class(class_name)
-            if success:
-                # Restore the cached students database
-                face_system.students_db = cached_students.get('students_db', {})
+            # Use cached data without loading from folder
+            success = face_system.set_current_class_from_cache(class_name, cached_students)
         else:
             # Load normally and cache
-            success = face_system.set_current_class(class_name)
+            success = face_system.set_current_class(class_name, use_cache=True)
             if success:
                 # Cache the loaded data
                 cache_data = {
@@ -767,8 +764,9 @@ def set_class():
                     'timestamp': datetime.now().isoformat()
                 }
                 save_to_cache(class_name, "students", cache_data)
-            else:
-                return jsonify({'error': f'Failed to load class {class_name}'}), 400
+        
+        if not success:
+            return jsonify({'error': f'Failed to load class {class_name}'}), 400
         
         # Update attendance manager
         attendance_manager.set_total_students(len(face_system.get_students_list()))
