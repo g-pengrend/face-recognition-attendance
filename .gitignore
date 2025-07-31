@@ -11,3 +11,10 @@ attendance_logs/.json
 AIPD_class.csv
 __pycache__/attendance_manager.cpython-39.pyc
 __pycache__/face_recognition.cpython-39.pyc
+
+# Cache files
+cache/
+*.pkl
+cache_metadata.json
+__pycache__/
+*.pyc

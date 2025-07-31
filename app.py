@@ -12,6 +12,9 @@ import random # Added for smart sampling
 import csv
 import tempfile
 import shutil
+import pickle
+import hashlib
+from pathlib import Path
 
 from face_recognition import FaceRecognitionSystem
 from attendance_manager import AttendanceManager
@@ -52,6 +55,11 @@ standby_cycle_time = 2.0  # Slower cycle when in standby mode (2 seconds)
 standby_timeout = 10  # Seconds without faces before entering standby
 consecutive_no_faces_count = 0  # Track consecutive frames with no faces
 last_standby_check_time = time.time()  # Track when we last checked for standby
+
+class_cache = {}
+student_cache = {}
+cache_dir = "cache"
+cache_metadata_file = os.path.join(cache_dir, "cache_metadata.json")
 
 class FaceSamplingManager:
     def __init__(self, batch_size=5, batch_interval=2.0):
@@ -120,6 +128,169 @@ class FaceSamplingManager:
 # Initialize the sampling manager
 face_sampling_manager = FaceSamplingManager(batch_size=5, batch_interval=2.0)
 
+def ensure_cache_directory():
+    """Ensure cache directory exists"""
+    os.makedirs(cache_dir, exist_ok=True)
+
+def get_folder_hash(folder_path):
+    """Calculate hash of folder contents for cache invalidation"""
+    if not os.path.exists(folder_path):
+        return None
+    
+    hash_md5 = hashlib.md5()
+    max_file_size = 10 * 1024 * 1024  # 10MB limit
+    
+    for root, dirs, files in os.walk(folder_path):
+        dirs.sort()
+        files.sort()
+        
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                file_size = os.path.getsize(file_path)
+                if file_size > max_file_size:
+                    logger.warning(f"Skipping large file {file_path} ({file_size} bytes)")
+                    continue
+                    
+                with open(file_path, 'rb') as f:
+                    stat = os.stat(file_path)
+                    content = f.read()
+                    hash_md5.update(content)
+                    hash_md5.update(str(stat.st_mtime).encode())
+            except Exception as e:
+                logger.warning(f"Error hashing file {file_path}: {e}")
+    
+    return hash_md5.hexdigest()
+
+def load_cache_metadata():
+    """Load cache metadata from file"""
+    if os.path.exists(cache_metadata_file):
+        try:
+            with open(cache_metadata_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Error loading cache metadata: {e}")
+    return {}
+
+def save_cache_metadata(metadata):
+    """Save cache metadata to file"""
+    try:
+        with open(cache_metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving cache metadata: {e}")
+
+def get_cache_key(class_name, cache_type):
+    """Generate cache key for class data"""
+    return f"{class_name}::{cache_type}"  # Use :: as separator
+
+def get_cache_filename(class_name, cache_type):
+    """Generate safe cache filename"""
+    safe_class_name = class_name.replace('/', '_').replace('\\', '_')
+    return f"{safe_class_name}_{cache_type}.pkl"
+
+def is_cache_valid(class_name, cache_type):
+    """Check if cache is valid for a class"""
+    metadata = load_cache_metadata()
+    cache_key = get_cache_key(class_name, cache_type)
+    
+    if cache_key not in metadata:
+        return False
+    
+    cache_info = metadata[cache_key]
+    folder_path = os.path.join("students", class_name)
+    current_hash = get_folder_hash(folder_path)
+    
+    return cache_info.get('hash') == current_hash
+
+def save_to_cache(class_name, cache_type, data):
+    """Save data to cache with improved error handling and performance monitoring"""
+    start_time = time.time()
+    try:
+        ensure_cache_directory()
+        cache_key = get_cache_key(class_name, cache_type)
+        cache_filename = get_cache_filename(class_name, cache_type)
+        cache_file = os.path.join(cache_dir, cache_filename)
+        
+        with open(cache_file, 'wb') as f:
+            pickle.dump(data, f)
+        
+        # Update metadata
+        metadata = load_cache_metadata()
+        folder_path = os.path.join("students", class_name)
+        current_hash = get_folder_hash(folder_path)
+        
+        if current_hash:  # Only save if hash calculation succeeded
+            metadata[cache_key] = {
+                'hash': current_hash,
+                'timestamp': datetime.now().isoformat(),
+                'cache_file': cache_file
+            }
+            save_cache_metadata(metadata)
+            elapsed_time = time.time() - start_time
+            logger.info(f"Cached {cache_type} data for class {class_name} in {elapsed_time:.2f}s")
+        else:
+            logger.warning(f"Could not calculate hash for class {class_name}, skipping cache")
+            
+    except Exception as e:
+        logger.error(f"Error saving cache for {class_name}: {e}")
+
+def load_from_cache(class_name, cache_type):
+    """Load data from cache"""
+    global cache_hits, cache_misses
+    
+    if not is_cache_valid(class_name, cache_type):
+        cache_misses += 1
+        return None
+    
+    cache_key = get_cache_key(class_name, cache_type)
+    cache_filename = get_cache_filename(class_name, cache_type)
+    cache_file = os.path.join(cache_dir, cache_filename)
+    
+    try:
+        with open(cache_file, 'rb') as f:
+            data = pickle.load(f)
+        cache_hits += 1
+        logger.info(f"Loaded {cache_type} data from cache for class {class_name}")
+        return data
+    except Exception as e:
+        cache_misses += 1
+        logger.error(f"Error loading cache for {class_name}: {e}")
+        return None
+
+def invalidate_cache(class_name=None):
+    """Invalidate cache for a specific class or all classes"""
+    metadata = load_cache_metadata()
+    
+    if class_name:
+        # Invalidate specific class
+        cache_key = get_cache_key(class_name, "students")
+        if cache_key in metadata:
+            cache_file = metadata[cache_key].get('cache_file')
+            if cache_file and os.path.exists(cache_file):
+                os.remove(cache_file)
+            del metadata[cache_key]
+        
+        cache_key = get_cache_key(class_name, "photos")
+        if cache_key in metadata:
+            cache_file = metadata[cache_key].get('cache_file')
+            if cache_file and os.path.exists(cache_file):
+                os.remove(cache_file)
+            del metadata[cache_key]
+    else:
+        # Invalidate all cache
+        for cache_info in metadata.values():
+            cache_file = cache_info.get('cache_file')
+            if cache_file and os.path.exists(cache_file):
+                try:
+                    os.remove(cache_file)
+                except OSError as e:
+                    logger.warning(f"Could not remove cache file {cache_file}: {e}")
+        metadata.clear()
+    
+    save_cache_metadata(metadata)
+    logger.info(f"Invalidated cache for {'all classes' if class_name is None else class_name}")
+
 def convert_numpy_types(obj):
     """Convert NumPy types to native Python types for JSON serialization"""
     if isinstance(obj, np.integer):
@@ -140,14 +311,24 @@ def initialize_systems():
     global face_system, attendance_manager
     
     try:
-        face_system = FaceRecognitionSystem(students_folder="students", threshold=0.6)
-        attendance_manager = AttendanceManager(logs_folder="attendance_logs")
+        # Ensure cache directory exists
+        ensure_cache_directory()
         
-        # Set face system reference in attendance manager
+        # Clean up old cache files on startup (older than 7 days)
+        cleaned_count = cleanup_old_cache(max_age_hours=168)  # 7 days
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} old cache files on startup")
+        
+        # Initialize face recognition system
+        face_system = FaceRecognitionSystem()
+        
+        # Initialize attendance manager
+        attendance_manager = AttendanceManager()
         attendance_manager.set_face_system(face_system)
         
         logger.info("Systems initialized successfully")
         return True
+        
     except Exception as e:
         logger.error(f"Failed to initialize systems: {e}")
         return False
@@ -307,13 +488,14 @@ def idle_monitoring_loop():
 
 def resume_detection_from_idle():
     """Resume detection from idle state"""
-    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, consecutive_no_faces_count, detection_state, last_standby_check_time
+    global is_idle, is_standby, idle_overlay_active, detection_active, last_face_detection_time, consecutive_no_faces_count, detection_thread, detection_state
     
     if is_idle:
         is_idle = False
         is_standby = False
         idle_overlay_active = False
-        detection_cycle_time = 0.1
+        detection_active = True
+        detection_state = 'active'  # Explicitly set detection state
         last_face_detection_time = time.time()  # Reset the timer
         consecutive_no_faces_count = 0
         last_standby_check_time = time.time()  # Reset standby check time
@@ -558,36 +740,48 @@ def get_classes():
 
 @app.route('/api/set-class', methods=['POST'])
 def set_class():
-    """Set the current class and load its students"""
-    global face_system, attendance_manager
-    
-    if not face_system:
-        return jsonify({'error': 'Face system not initialized'}), 500
-    
+    """Set the current class with caching"""
     try:
-        data = request.json
+        data = request.get_json()
         class_name = data.get('class_name')
         
         if not class_name:
             return jsonify({'error': 'Class name is required'}), 400
         
-        success = face_system.set_current_class(class_name)
-        if success:
-            # Reset attendance manager for new class
-            if attendance_manager:
-                attendance_manager.end_session()  # End any existing session
-            
-            return jsonify({
-                'success': True,
-                'message': f'Switched to class: {class_name}',
-                'students_count': len(face_system.get_students_list())
-            })
+        # Try to load from cache first
+        cached_students = load_from_cache(class_name, "students")
+        if cached_students:
+            # Use cached data
+            face_system.students = cached_students.get('students', {})
+            face_system.student_names = cached_students.get('student_names', [])
+            face_system.current_class = class_name
         else:
-            return jsonify({'error': f'Class {class_name} not found'}), 404
-            
+            # Load normally and cache
+            success = face_system.set_current_class(class_name)
+            if success:
+                # Cache the loaded data
+                cache_data = {
+                    'students': face_system.students,
+                    'student_names': face_system.student_names,
+                    'timestamp': datetime.now().isoformat()
+                }
+                save_to_cache(class_name, "students", cache_data)
+            else:
+                return jsonify({'error': f'Failed to load class {class_name}'}), 400
+        
+        # Update attendance manager
+        attendance_manager.set_total_students(len(face_system.student_names))
+        
+        return jsonify({
+            'success': True,
+            'message': f'Class {class_name} loaded successfully',
+            'students_count': len(face_system.student_names),
+            'cached': cached_students is not None
+        })
+        
     except Exception as e:
         logger.error(f"Error setting class: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Error setting class: {str(e)}'}), 500
 
 @app.route('/api/current-class')
 def get_current_class():
@@ -602,58 +796,77 @@ def get_current_class():
 
 @app.route('/api/add-student', methods=['POST'])
 def add_student():
-    """
-    Add a new student via UI (single image, multiple images, or existing folder)
-    """
+    """Add student with cache invalidation"""
     name = request.form.get('name')
     folder = request.form.get('folder')
     folder_path = request.form.get('folder_path')
     images = request.files.getlist('images')
     image = request.files.get('image')
-    class_name = request.form.get('class_name')  # Add class name parameter
+    class_name = request.form.get('class_name')
 
-    # Handle single image upload
-    if image:
-        if class_name:
-            save_path = os.path.join('students', class_name, folder or '', f"{name}.jpg")
-        else:
-            save_path = os.path.join('students', folder or '', f"{name}.jpg")
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        image.save(save_path)
-        # Add to face system
-        face_system.add_student(name, save_path, class_name)
-        return jsonify({'success': True, 'message': f'Student {name} added with single image.'})
+    try:
+        # Handle single image upload
+        if image:
+            if class_name:
+                save_path = os.path.join('students', class_name, folder or '', f"{name}.jpg")
+            else:
+                save_path = os.path.join('students', folder or '', f"{name}.jpg")
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            image.save(save_path)
+            # Add to face system
+            face_system.add_student(name, save_path, class_name)
+            
+            # Invalidate cache for the class
+            if class_name:
+                invalidate_cache(class_name)
+            
+            return jsonify({'success': True, 'message': f'Student {name} added with single image.'})
 
-    # Handle multiple images (folder)
-    elif images and folder:
-        if class_name:
-            folder_dir = os.path.join('students', class_name, folder)
-        else:
-            folder_dir = os.path.join('students', folder)
-        os.makedirs(folder_dir, exist_ok=True)
-        image_paths = []
-        for i, img in enumerate(images):
-            img_path = os.path.join(folder_dir, f"{name}_{i}.jpg")
-            img.save(img_path)
-            image_paths.append(img_path)
-        # Add to face system (implement add_student_multiple_images)
-        face_system.add_student_multiple_images(name, image_paths)
-        return jsonify({'success': True, 'message': f'Student {name} added with {len(image_paths)} images.'})
+        # Handle multiple images (folder)
+        elif images and folder:
+            if class_name:
+                folder_dir = os.path.join('students', class_name, folder)
+            else:
+                folder_dir = os.path.join('students', folder)
+            os.makedirs(folder_dir, exist_ok=True)
+            image_paths = []
+            for i, img in enumerate(images):
+                img_path = os.path.join(folder_dir, f"{name}_{i}.jpg")
+                img.save(img_path)
+                image_paths.append(img_path)
+            # Add to face system
+            face_system.add_student_multiple_images(name, image_paths)
+            
+            # Invalidate cache for the class
+            if class_name:
+                invalidate_cache(class_name)
+            
+            return jsonify({'success': True, 'message': f'Student {name} added with {len(image_paths)} images.'})
 
-    # Handle existing folder
-    elif folder_path:
-        # List all images in the folder
-        image_paths = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
-        if not image_paths:
-            return jsonify({'success': False, 'error': 'No images found in folder.'})
-        face_system.add_student_multiple_images(name, image_paths)
-        return jsonify({'success': True, 'message': f'Student {name} added from existing folder.'})
+        # Handle existing folder
+        elif folder_path:
+            # List all images in the folder
+            image_paths = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
+            if not image_paths:
+                return jsonify({'success': False, 'error': 'No images found in folder.'})
+            face_system.add_student_multiple_images(name, image_paths)
+            
+            # Invalidate cache for the current class
+            class_name = face_system.get_current_class()
+            if class_name:
+                invalidate_cache(class_name)
+            
+            return jsonify({'success': True, 'message': f'Student {name} added from existing folder.'})
 
-    return jsonify({'success': False, 'error': 'Invalid request.'})
+        return jsonify({'success': False, 'error': 'Invalid request.'})
+        
+    except Exception as e:
+        logger.error(f"Error adding student: {e}")
+        return jsonify({'success': False, 'error': f'Error adding student: {str(e)}'}), 500
 
 @app.route('/api/remove-student', methods=['POST'])
 def remove_student():
-    """Remove a student"""
+    """Remove student with cache invalidation"""
     global face_system
     
     if not face_system:
@@ -668,6 +881,10 @@ def remove_student():
         
         success = face_system.remove_student(name)
         if success:
+            # After successfully removing student, invalidate cache
+            class_name = face_system.get_current_class()
+            if class_name:
+                invalidate_cache(class_name)
             return jsonify({'success': True, 'message': f'Student {name} removed successfully'})
         else:
             return jsonify({'error': 'Student not found'}), 404
@@ -930,7 +1147,7 @@ def save_face_photo():
         
         # Test face detection on the saved image
         test_img_rgb = cv2.cvtColor(test_img, cv2.COLOR_BGR2RGB)
-        test_faces = face_system.app.get(test_img_rgb)
+        test_faces = face_system.detect_faces(test_img_rgb)
         logger.info(f"Face detection test on saved image found {len(test_faces)} faces")
         
         if len(test_faces) == 0:
@@ -962,6 +1179,10 @@ def save_face_photo():
         
         if db_success:
             logger.info(f"Successfully added face for {student_name}")
+            # After successfully saving the face photo, invalidate cache
+            class_name = data.get('class_name') or face_system.get_current_class()
+            if class_name:
+                invalidate_cache(class_name)
             return jsonify({
                 'success': True,
                 'message': f'Face photo saved for {student_name}',
@@ -1076,81 +1297,42 @@ def serve_temp_file(filename):
 def create_class():
     """Create a new class from CSV file"""
     try:
-        class_name = request.form.get('class_name')
-        csv_file = request.files.get('csv_file')
+        if 'csv_file' not in request.files:
+            return jsonify({'error': 'No CSV file provided'}), 400
+        
+        csv_file = request.files['csv_file']
+        class_name = request.form.get('class_name', '').strip()
         
         if not class_name:
             return jsonify({'error': 'Class name is required'}), 400
         
-        if not csv_file:
-            return jsonify({'error': 'CSV file is required'}), 400
-        
-        # Validate file extension
         if not csv_file.filename.lower().endswith('.csv'):
             return jsonify({'error': 'File must be a CSV'}), 400
         
-        # Create class directory
-        class_folder = os.path.join('students', class_name)
-        if os.path.exists(class_folder):
-            return jsonify({'error': f'Class "{class_name}" already exists'}), 400
-        
+        # Create class folder
+        class_folder = os.path.join("students", class_name)
         os.makedirs(class_folder, exist_ok=True)
         
-        # Save uploaded CSV temporarily
-        temp_csv_path = os.path.join(tempfile.gettempdir(), f'temp_{class_name}.csv')
-        csv_file.save(temp_csv_path)
-        
+        # Read CSV and create student folders
         students_count = 0
-        errors = []
-        
         try:
-            # Read CSV and create student folders
-            with open(temp_csv_path, newline='', encoding='utf-8-sig') as csvfile:
-                reader = csv.DictReader(csvfile)
-                
-                # Validate CSV structure
-                if 'Serial' not in reader.fieldnames or 'Name' not in reader.fieldnames:
-                    return jsonify({'error': 'CSV must contain "Serial" and "Name" columns'}), 400
-                
-                for row_num, row in enumerate(reader, start=2):  # Start at 2 for row numbers
-                    try:
-                        serial = row['Serial'].strip()
-                        name = row['Name'].strip()
-                        
-                        if not serial or not name:
-                            errors.append(f"Row {row_num}: Missing Serial or Name")
-                            continue
-                        
-                        folder_name = f"{serial}_{name}"
-                        folder_path = os.path.join(class_folder, folder_name)
-                        
-                        # Check for invalid characters in folder name
-                        invalid_chars = '<>:"/\\|?*'
-                        if any(char in folder_name for char in invalid_chars):
-                            errors.append(f"Row {row_num}: Invalid characters in name '{folder_name}'")
-                            continue
-                        
-                        os.makedirs(folder_path, exist_ok=True)
-                        students_count += 1
-                        
-                    except Exception as e:
-                        errors.append(f"Row {row_num}: {str(e)}")
-                
-        finally:
-            # Clean up temporary file
-            if os.path.exists(temp_csv_path):
-                os.remove(temp_csv_path)
-        
-        if errors:
-            # If there were errors, clean up the class folder
-            if os.path.exists(class_folder):
-                shutil.rmtree(class_folder)
+            # Read CSV content
+            csv_content = csv_file.read().decode('utf-8')
+            csv_reader = csv.DictReader(csv_content.splitlines())
             
-            error_msg = f"CSV processing failed with {len(errors)} errors:\n" + "\n".join(errors[:5])  # Show first 5 errors
-            if len(errors) > 5:
-                error_msg += f"\n... and {len(errors) - 5} more errors"
-            
-            return jsonify({'error': error_msg}), 400
+            for row in csv_reader:
+                serial = row.get('Serial', '').strip()
+                name = row.get('Name', '').strip()
+                
+                if serial and name:
+                    # Create student folder with format: 01_John Doe
+                    student_folder = os.path.join(class_folder, f"{serial}_{name}")
+                    os.makedirs(student_folder, exist_ok=True)
+                    students_count += 1
+                    
+        except Exception as e:
+            logger.error(f"Error processing CSV: {e}")
+            return jsonify({'error': f'Error processing CSV file: {str(e)}'}), 400
         
         if students_count == 0:
             # Clean up empty class folder
@@ -1159,6 +1341,9 @@ def create_class():
             return jsonify({'error': 'No valid students found in CSV'}), 400
         
         logger.info(f"Created class '{class_name}' with {students_count} students")
+        
+        # Invalidate cache for the new class
+        invalidate_cache(class_name)
         
         return jsonify({
             'success': True,
@@ -1179,6 +1364,214 @@ def not_found(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear all cache"""
+    try:
+        invalidate_cache()
+        return jsonify({'success': True, 'message': 'Cache cleared successfully'})
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        return jsonify({'error': f'Error clearing cache: {str(e)}'}), 500
+
+@app.route('/api/cache/status')
+def cache_status():
+    """Get cache status"""
+    try:
+        metadata = load_cache_metadata()
+        cache_info = {}
+        
+        for cache_key, info in metadata.items():
+            try:
+                class_name, cache_type = cache_key.split('::', 1)
+                if class_name not in cache_info:
+                    cache_info[class_name] = {}
+                
+                cache_info[class_name][cache_type] = {
+                    'timestamp': info.get('timestamp'),
+                    'valid': is_cache_valid(class_name, cache_type)
+                }
+            except ValueError:
+                logger.warning(f"Invalid cache key format: {cache_key}")
+                continue
+        
+        return jsonify({
+            'success': True,
+            'cache_info': cache_info,
+            'total_cached_classes': len(cache_info)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting cache status: {e}")
+        return jsonify({'error': f'Error getting cache status: {str(e)}'}), 500
+
+def get_cache_stats():
+    """Get cache statistics"""
+    try:
+        metadata = load_cache_metadata()
+        total_files = 0
+        total_size = 0
+        cache_info = {}
+        
+        for cache_key, info in metadata.items():
+            try:
+                class_name, cache_type = cache_key.split('::', 1)
+                cache_file = info.get('cache_file')
+                
+                if cache_file and os.path.exists(cache_file):
+                    file_size = os.path.getsize(cache_file)
+                    total_size += file_size
+                    total_files += 1
+                    
+                    if class_name not in cache_info:
+                        cache_info[class_name] = {}
+                    
+                    cache_info[class_name][cache_type] = {
+                        'size': file_size,
+                        'timestamp': info.get('timestamp'),
+                        'valid': is_cache_valid(class_name, cache_type)
+                    }
+                    
+            except ValueError:
+                continue
+        
+        return {
+            'total_files': total_files,
+            'total_size': total_size,
+            'total_size_mb': total_size / (1024 * 1024),
+            'cache_info': cache_info
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {e}")
+        return None
+
+# Add this endpoint
+@app.route('/api/cache/stats')
+def cache_stats():
+    """Get cache statistics"""
+    try:
+        stats = get_cache_stats()
+        if stats:
+            return jsonify({
+                'success': True,
+                'stats': stats
+            })
+        else:
+            return jsonify({'error': 'Could not retrieve cache statistics'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {e}")
+        return jsonify({'error': f'Error getting cache stats: {str(e)}'}), 500
+
+def cleanup_old_cache(max_age_hours=24):
+    """Clean up cache files older than specified hours"""
+    try:
+        metadata = load_cache_metadata()
+        current_time = datetime.now()
+        cleaned_count = 0
+        
+        for cache_key, info in metadata.items():
+            timestamp_str = info.get('timestamp')
+            if timestamp_str:
+                try:
+                    cache_time = datetime.fromisoformat(timestamp_str)
+                    age_hours = (current_time - cache_time).total_seconds() / 3600
+                    
+                    if age_hours > max_age_hours:
+                        cache_file = info.get('cache_file')
+                        if cache_file and os.path.exists(cache_file):
+                            os.remove(cache_file)
+                            cleaned_count += 1
+                        
+                        # Remove from metadata
+                        del metadata[cache_key]
+                        
+                except ValueError:
+                    continue
+        
+        if cleaned_count > 0:
+            save_cache_metadata(metadata)
+            logger.info(f"Cleaned up {cleaned_count} old cache files")
+        
+        return cleaned_count
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up cache: {e}")
+        return 0
+
+# Add this endpoint
+@app.route('/api/cache/cleanup', methods=['POST'])
+def cleanup_cache():
+    """Clean up old cache files"""
+    try:
+        max_age = request.json.get('max_age_hours', 24)
+        cleaned_count = cleanup_old_cache(max_age)
+        
+        return jsonify({
+            'success': True,
+            'cleaned_count': cleaned_count,
+            'message': f'Cleaned up {cleaned_count} old cache files'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up cache: {e}")
+        return jsonify({'error': f'Error cleaning up cache: {str(e)}'}), 500
+
+# Add these global variables at the top with other globals
+cache_hits = 0
+cache_misses = 0
+
+def get_cache_performance():
+    """Get cache performance statistics"""
+    total_requests = cache_hits + cache_misses
+    hit_rate = (cache_hits / total_requests * 100) if total_requests > 0 else 0
+    
+    return {
+        'hits': cache_hits,
+        'misses': cache_misses,
+        'total_requests': total_requests,
+        'hit_rate': hit_rate
+    }
+
+# Update the load_from_cache function
+def load_from_cache(class_name, cache_type):
+    """Load data from cache"""
+    global cache_hits, cache_misses
+    
+    if not is_cache_valid(class_name, cache_type):
+        cache_misses += 1
+        return None
+    
+    cache_key = get_cache_key(class_name, cache_type)
+    cache_filename = get_cache_filename(class_name, cache_type)
+    cache_file = os.path.join(cache_dir, cache_filename)
+    
+    try:
+        with open(cache_file, 'rb') as f:
+            data = pickle.load(f)
+        cache_hits += 1
+        logger.info(f"Loaded {cache_type} data from cache for class {class_name}")
+        return data
+    except Exception as e:
+        cache_misses += 1
+        logger.error(f"Error loading cache for {class_name}: {e}")
+        return None
+
+# Add this endpoint
+@app.route('/api/cache/performance')
+def cache_performance():
+    """Get cache performance statistics"""
+    try:
+        performance = get_cache_performance()
+        return jsonify({
+            'success': True,
+            'performance': performance
+        })
+    except Exception as e:
+        logger.error(f"Error getting cache performance: {e}")
+        return jsonify({'error': f'Error getting cache performance: {str(e)}'}), 500
+
 if __name__ == '__main__':
     # Initialize systems
     if not initialize_systems():
@@ -1190,6 +1583,7 @@ if __name__ == '__main__':
         os.makedirs("students", exist_ok=True)
         os.makedirs("temp", exist_ok=True)  # Changed to root temp
         os.makedirs("attendance_logs", exist_ok=True)
+        os.makedirs("cache", exist_ok=True)  # Add this line
         
         logger.info("Starting Flask application...")
         app.run(host='0.0.0.0', port=5155, debug=False, threaded=True)

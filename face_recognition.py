@@ -7,6 +7,9 @@ import json
 from datetime import datetime
 import logging
 from typing import List
+import pickle
+import hashlib
+from pathlib import Path
 
 # Set environment variables for Apple Silicon optimization BEFORE importing InsightFace
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
@@ -491,4 +494,239 @@ class FaceRecognitionSystem:
             del self.students_db[name]
             self.logger.info(f"Removed student: {name}")
             return True
+        return False 
+
+
+def ensure_cache_directory():
+    """Ensure cache directory exists"""
+    os.makedirs(cache_dir, exist_ok=True)
+
+def get_folder_hash(folder_path):
+    """Calculate hash of folder contents for cache invalidation"""
+    if not os.path.exists(folder_path):
+        return None
+    
+    hash_md5 = hashlib.md5()
+    for root, dirs, files in os.walk(folder_path):
+        # Sort for consistent hashing
+        dirs.sort()
+        files.sort()
+        
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, 'rb') as f:
+                    # Hash file content and modification time
+                    stat = os.stat(file_path)
+                    content = f.read()
+                    hash_md5.update(content)
+                    hash_md5.update(str(stat.st_mtime).encode())
+            except Exception as e:
+                logging.warning(f"Error hashing file {file_path}: {e}")
+    
+    return hash_md5.hexdigest()
+
+def load_cache_metadata():
+    """Load cache metadata from file"""
+    if os.path.exists(cache_metadata_file):
+        try:
+            with open(cache_metadata_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logging.warning(f"Error loading cache metadata: {e}")
+    return {}
+
+def save_cache_metadata(metadata):
+    """Save cache metadata to file"""
+    try:
+        with open(cache_metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+    except Exception as e:
+        logging.error(f"Error saving cache metadata: {e}")
+
+def get_cache_key(class_name, cache_type):
+    """Generate cache key for class data"""
+    return f"{class_name}_{cache_type}"
+
+def is_cache_valid(class_name, cache_type):
+    """Check if cache is valid for a class"""
+    metadata = load_cache_metadata()
+    cache_key = get_cache_key(class_name, cache_type)
+    
+    if cache_key not in metadata:
+        return False
+    
+    cache_info = metadata[cache_key]
+    folder_path = os.path.join("students", class_name)
+    current_hash = get_folder_hash(folder_path)
+    
+    return cache_info.get('hash') == current_hash
+
+def save_to_cache(class_name, cache_type, data):
+    """Save data to cache"""
+    ensure_cache_directory()
+    cache_key = get_cache_key(class_name, cache_type)
+    cache_file = os.path.join(cache_dir, f"{cache_key}.pkl")
+    
+    try:
+        with open(cache_file, 'wb') as f:
+            pickle.dump(data, f)
+        
+        # Update metadata
+        metadata = load_cache_metadata()
+        folder_path = os.path.join("students", class_name)
+        metadata[cache_key] = {
+            'hash': get_folder_hash(folder_path),
+            'timestamp': datetime.now().isoformat(),
+            'cache_file': cache_file
+        }
+        save_cache_metadata(metadata)
+        
+        logging.info(f"Cached {cache_type} data for class {class_name}")
+    except Exception as e:
+        logging.error(f"Error saving cache for {class_name}: {e}")
+
+def load_from_cache(class_name, cache_type):
+    """Load data from cache"""
+    if not is_cache_valid(class_name, cache_type):
+        return None
+    
+    cache_key = get_cache_key(class_name, cache_type)
+    cache_file = os.path.join(cache_dir, f"{cache_key}.pkl")
+    
+    try:
+        with open(cache_file, 'rb') as f:
+            data = pickle.load(f)
+        logging.info(f"Loaded {cache_type} data from cache for class {class_name}")
+        return data
+    except Exception as e:
+        logging.error(f"Error loading cache for {class_name}: {e}")
+        return None
+
+def invalidate_cache(class_name=None):
+    """Invalidate cache for a specific class or all classes"""
+    metadata = load_cache_metadata()
+    
+    if class_name:
+        # Invalidate specific class
+        cache_key = get_cache_key(class_name, "students")
+        if cache_key in metadata:
+            cache_file = metadata[cache_key].get('cache_file')
+            if cache_file and os.path.exists(cache_file):
+                os.remove(cache_file)
+            del metadata[cache_key]
+        
+        cache_key = get_cache_key(class_name, "photos")
+        if cache_key in metadata:
+            cache_file = metadata[cache_key].get('cache_file')
+            if cache_file and os.path.exists(cache_file):
+                os.remove(cache_file)
+            del metadata[cache_key]
+    else:
+        # Invalidate all cache
+        for cache_info in metadata.values():
+            cache_file = cache_info.get('cache_file')
+            if cache_file and os.path.exists(cache_file):
+                os.remove(cache_file)
+        metadata.clear()
+    
+    save_cache_metadata(metadata)
+    logging.info(f"Invalidated cache for {'all classes' if class_name is None else class_name}")
+
+
+def load_students_with_cache(self, class_name):
+    """Load students with caching support"""
+    # Try to load from cache first
+    cached_data = self._load_from_cache(class_name)
+    if cached_data:
+        self.students = cached_data.get('students', {})
+        self.student_names = cached_data.get('student_names', [])
+        self.current_class = class_name
+        return True
+    
+    # If cache miss, load normally and cache the result
+    success = self._load_students_for_class(class_name)
+    if success:
+        self._save_to_cache(class_name)
+    return success
+
+def _load_from_cache(self, class_name):
+    """Load student data from cache"""
+    cache_dir = "cache"
+    cache_file = os.path.join(cache_dir, f"{class_name}_students.pkl")
+    
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'rb') as f:
+                data = pickle.load(f)
+            self.logger.info(f"Loaded student data from cache for class {class_name}")
+            return data
+        except Exception as e:
+            self.logger.warning(f"Error loading cache for {class_name}: {e}")
+    
+    return None
+
+def _save_to_cache(self, class_name):
+    """Save student data to cache"""
+    cache_dir = "cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_file = os.path.join(cache_dir, f"{class_name}_students.pkl")
+    
+    try:
+        data = {
+            'students': self.students,
+            'student_names': self.student_names,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        with open(cache_file, 'wb') as f:
+            pickle.dump(data, f)
+        
+        self.logger.info(f"Cached student data for class {class_name}")
+    except Exception as e:
+        self.logger.error(f"Error saving cache for {class_name}: {e}")
+
+def _is_cache_valid(self, class_name):
+    """Check if cache is valid for a class"""
+    cache_dir = "cache"
+    cache_file = os.path.join(cache_dir, f"{class_name}_students.pkl")
+    
+    if not os.path.exists(cache_file):
+        return False
+    
+    # Check if folder has been modified since cache was created
+    class_folder = os.path.join(self.students_folder, class_name)
+    if not os.path.exists(class_folder):
+        return False
+    
+    cache_time = os.path.getmtime(cache_file)
+    folder_time = os.path.getmtime(class_folder)
+    
+    return cache_time >= folder_time 
+
+# Add this method to the FaceRecognitionSystem class
+def add_student_multiple_images(self, name, image_paths):
+    """Add a student with multiple images"""
+    try:
+        # Create student entry if it doesn't exist
+        if name not in self.students_db:
+            self.students_db[name] = {
+                'embeddings': [],
+                'image_paths': [],
+                'primary_embedding': None
+            }
+        
+        # Add each image path
+        for image_path in image_paths:
+            if image_path not in self.students_db[name]['image_paths']:
+                self.students_db[name]['image_paths'].append(image_path)
+        
+        # Load the student's face embeddings
+        self._load_student_with_multiple_images(name, image_paths)
+        
+        self.logger.info(f"Added student {name} with {len(image_paths)} images")
+        return True
+        
+    except Exception as e:
+        self.logger.error(f"Error adding student {name} with multiple images: {e}")
         return False 

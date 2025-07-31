@@ -577,6 +577,19 @@
                 </div>
             </div>
 
+            <!-- Add this after the class selector in the header -->
+            <div class="mt-2">
+                <button class="btn btn-outline-light btn-sm me-2" onclick="showCacheStats()">
+                    <i class="fas fa-chart-bar"></i> Cache Stats
+                </button>
+                <button class="btn btn-outline-light btn-sm me-2" onclick="cleanupCache()">
+                    <i class="fas fa-broom"></i> Cleanup Cache
+                </button>
+                <button class="btn btn-outline-light btn-sm" onclick="clearCache()">
+                    <i class="fas fa-trash"></i> Clear Cache
+                </button>
+            </div>
+
             <!-- Main Content -->
             <div class="tab-content">
                 <!-- Navigation Tabs -->
@@ -1676,9 +1689,13 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    showAlert('success', result.message);
-                    await loadStudents();  // Reload students for the new class
-                    await updateStatus();  // Update status with new student count
+                    const message = result.cached ? 
+                        `Class "${selectedClass}" loaded from cache!` : 
+                        `Class "${selectedClass}" loaded and cached!`;
+                    showAlert('success', message);
+                    await loadStudents();
+                    await updateStatus();
+                    await showCacheStatus(); // Add this line
                 } else {
                     showAlert('danger', result.error || 'Failed to change class');
                 }
@@ -2483,6 +2500,90 @@
                     checkDetectionStatus();
                 }
             }, 5000);
+        }
+
+        // Add this function to show cache status
+        async function showCacheStatus() {
+            try {
+                const response = await fetch('/api/cache/status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log('Cache status:', data.cache_info);
+                    const currentClass = document.getElementById('classSelect').value;
+                    if (currentClass && data.cache_info[currentClass]) {
+                        const cacheInfo = data.cache_info[currentClass];
+                        if (cacheInfo.students && cacheInfo.students.valid) {
+                            console.log(`Class "${currentClass}" data is cached`);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error getting cache status:', error);
+            }
+        }
+
+        // Add cache management functions
+        async function clearCache() {
+            try {
+                const response = await fetch('/api/cache/clear', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', 'Cache cleared successfully');
+                } else {
+                    showAlert('danger', result.error || 'Failed to clear cache');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error clearing cache: ' + error.message);
+            }
+        }
+
+        async function cleanupCache() {
+            try {
+                const maxAge = prompt('Enter maximum age in hours (default: 24):', '24');
+                if (maxAge === null) return; // User cancelled
+                
+                const response = await fetch('/api/cache/cleanup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ max_age_hours: parseInt(maxAge) || 24 })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', result.message);
+                } else {
+                    showAlert('danger', result.error || 'Failed to cleanup cache');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error cleaning up cache: ' + error.message);
+            }
+        }
+
+        async function showCacheStats() {
+            try {
+                const response = await fetch('/api/cache/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.stats;
+                    const message = `Cache Statistics:\n` +
+                                  `Total Files: ${stats.total_files}\n` +
+                                  `Total Size: ${stats.total_size_mb.toFixed(2)} MB\n` +
+                                  `Cached Classes: ${Object.keys(stats.cache_info).length}`;
+                    
+                    alert(message);
+                } else {
+                    showAlert('danger', data.error || 'Failed to get cache stats');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error getting cache stats: ' + error.message);
+            }
         }
     </script>
 </body>
