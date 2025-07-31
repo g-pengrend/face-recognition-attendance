@@ -2380,13 +2380,6 @@
                         return;
                     }
                     
-                    // If we're in idle state but detection is active, something is wrong
-                    if (data.state === 'idle' && data.idle_overlay_active && isDetectionActive) {
-                        console.log('Warning: Detection is active but backend reports idle state');
-                        // Don't show idle overlay if we just resumed
-                        return;
-                    }
-                    
                     if (data.state === 'idle' && data.idle_overlay_active) {
                         // Show idle overlay (highest priority)
                         idleOverlay.style.display = 'flex';
