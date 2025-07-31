@@ -11,18 +11,22 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden; /* Prevent horizontal scroll */
         }
         
-        /* Replace the existing .main-container styles */
+        /* Fix the main container to prevent horizontal scroll */
         .main-container {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             backdrop-filter: blur(10px);
             margin: 20px auto;
-            max-width: 95vw;
-            width: 95vw;
-            min-width: 320px; /* Minimum width for mobile */
+            max-width: 92vw; /* Reduced from 95vw to account for margins */
+            width: 92vw;
+            min-width: 320px;
+            box-sizing: border-box; /* Ensure padding is included in width calculation */
         }
         
         .header {
@@ -540,8 +544,8 @@
         @media (max-width: 576px) {
             /* Mobile phones */
             .main-container {
-                max-width: 98vw;
-                width: 98vw;
+                max-width: 96vw; /* Reduced from 98vw */
+                width: 96vw;
                 margin: 10px auto;
                 border-radius: 15px;
             }
@@ -585,8 +589,8 @@
         @media (min-width: 577px) and (max-width: 768px) {
             /* Tablets */
             .main-container {
-                max-width: 96vw;
-                width: 96vw;
+                max-width: 94vw; /* Reduced from 96vw */
+                width: 94vw;
             }
             
             .class-select-container {
@@ -606,8 +610,8 @@
         @media (min-width: 769px) and (max-width: 1024px) {
             /* Small laptops */
             .main-container {
-                max-width: 95vw;
-                width: 95vw;
+                max-width: 93vw; /* Reduced from 95vw */
+                width: 93vw;
             }
             
             .class-select-container {
@@ -627,8 +631,8 @@
         @media (min-width: 1025px) and (max-width: 1440px) {
             /* Large laptops */
             .main-container {
-                max-width: 94vw;
-                width: 94vw;
+                max-width: 92vw; /* Reduced from 94vw */
+                width: 92vw;
             }
             
             .class-select-container {
@@ -648,8 +652,8 @@
         @media (min-width: 1441px) {
             /* Desktop monitors */
             .main-container {
-                max-width: 98vw;
-                width: 98vw;
+                max-width: 96vw; /* Reduced from 98vw */
+                width: 96vw;
             }
             
             .class-select-container {
@@ -669,8 +673,8 @@
         @media (min-width: 1920px) {
             /* 4K and ultra-wide monitors */
             .main-container {
-                max-width: 99vw;
-                width: 99vw;
+                max-width: 97vw; /* Reduced from 99vw */
+                width: 97vw;
             }
             
             .class-select-container {
@@ -691,6 +695,7 @@
         .container-fluid {
             padding-left: 15px;
             padding-right: 15px;
+            box-sizing: border-box;
         }
 
         @media (min-width: 768px) {
@@ -702,8 +707,8 @@
 
         @media (min-width: 1200px) {
             .container-fluid {
-                padding-left: 30px;
-                padding-right: 30px;
+                padding-left: 25px; /* Reduced from 30px */
+                padding-right: 25px;
             }
         }
 
