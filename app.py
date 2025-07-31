@@ -371,6 +371,7 @@ def _initialize_camera():
             logger.info(f"Attempting to connect to IP camera: {ip_camera_url}")
             camera = cv2.VideoCapture(ip_camera_url)
             
+            # Give more time for IP camera connection and don't auto-fallback
             # Try to read a frame to test the connection
             ret, test_frame = camera.read()
             if camera.isOpened() and ret:
@@ -381,23 +382,15 @@ def _initialize_camera():
                 camera.set(cv2.CAP_PROP_FPS, 15)
                 camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             else:
-                logger.warning("Failed to connect to IP camera, falling back to local camera")
-                camera_mode = "local"
-                camera = cv2.VideoCapture(0)
-                # Set camera properties for local camera
-                camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                camera.set(cv2.CAP_PROP_FPS, 15)
-                camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                logger.warning("Failed to connect to IP camera - keeping IP mode for manual configuration")
+                # Don't auto-fallback, let user configure the IP
+                camera = None
+                return camera
         except Exception as e:
-            logger.warning(f"Error connecting to IP camera: {e}, falling back to local camera")
-            camera_mode = "local"
-            camera = cv2.VideoCapture(0)
-            # Set camera properties for local camera
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            camera.set(cv2.CAP_PROP_FPS, 15)
-            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            logger.warning(f"Error connecting to IP camera: {e} - keeping IP mode for manual configuration")
+            # Don't auto-fallback, let user configure the IP
+            camera = None
+            return camera
     else:
         logger.info("Using local camera")
         camera = cv2.VideoCapture(0)
@@ -1741,7 +1734,8 @@ def get_camera_status():
     status = {
         'mode': camera_mode,
         'connected': camera is not None and camera.isOpened() if camera else False,
-        'ip_url': ip_camera_url if camera_mode == "ip" else None
+        'ip_url': ip_camera_url if camera_mode == "ip" else None,
+        'needs_configuration': camera_mode == "ip" and (camera is None or not camera.isOpened())
     }
     
     return jsonify(status)
@@ -1775,6 +1769,17 @@ def switch_camera_endpoint():
         if target_mode != camera_mode:
             success = switch_camera(target_mode)
             if success:
+                # Check if IP camera needs configuration
+                if target_mode == "ip":
+                    camera = get_camera()
+                    if camera is None or not camera.isOpened():
+                        return jsonify({
+                            'success': True,
+                            'message': f'Switched to IP camera mode. Please configure the IP address.',
+                            'mode': camera_mode,
+                            'needs_configuration': True
+                        })
+                
                 return jsonify({
                     'success': True,
                     'message': f'Switched to {camera_mode} camera',
