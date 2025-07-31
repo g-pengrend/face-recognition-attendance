@@ -678,18 +678,25 @@ def get_sessions():
     sessions = []
     for fname in os.listdir('attendance_logs'):
         if fname.endswith('.json'):
-            with open(os.path.join('attendance_logs', fname)) as f:
-                session = json.load(f)
-                sessions.append({
-                    'session_id': session.get('session_id', fname.replace('.json', '')),
-                    'session_name': session.get('session_name', ''),
-                    'class_name': session.get('class_name', ''),
-                    'start_time': session.get('session_start_time', ''),
-                    'active': session.get('active', False),
-                    'filename': fname,
-                    'present_students': len(session.get('attendance', {})),
-                    'total_students': session.get('total_students', 0)
-                })
+            try:
+                with open(os.path.join('attendance_logs', fname)) as f:
+                    session = json.load(f)
+                    sessions.append({
+                        'session_id': session.get('session_id', fname.replace('.json', '')),
+                        'session_name': session.get('session_name', ''),
+                        'class_name': session.get('class_name', ''),
+                        'start_time': session.get('session_start_time', ''),
+                        'active': session.get('active', False),
+                        'filename': fname,
+                        'present_students': len(session.get('attendance', {})),
+                        'total_students': session.get('total_students', 0)
+                    })
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Error reading session file {fname}: {e}")
+                # Optionally remove corrupted file
+                # os.remove(os.path.join('attendance_logs', fname))
+                continue
+    
     # Sort by start_time descending
     sessions.sort(key=lambda s: s['start_time'], reverse=True)
     return jsonify({'sessions': sessions})
@@ -751,11 +758,15 @@ def set_class():
         # Try to load from cache first
         cached_students = load_from_cache(class_name, "students")
         if cached_students:
-            # Use cached data without loading from folder
-            success = face_system.set_current_class_from_cache(class_name, cached_students)
+            # Use cached data - set current class and restore students_db
+            success = face_system.set_current_class(class_name)
+            if success:
+                # Restore the cached students database
+                face_system.students_db = cached_students.get('students_db', {})
+                logger.info(f"Loaded class {class_name} from cache with {len(face_system.students_db)} students")
         else:
             # Load normally and cache
-            success = face_system.set_current_class(class_name, use_cache=True)
+            success = face_system.set_current_class(class_name)
             if success:
                 # Cache the loaded data
                 cache_data = {
@@ -764,6 +775,7 @@ def set_class():
                     'timestamp': datetime.now().isoformat()
                 }
                 save_to_cache(class_name, "students", cache_data)
+                logger.info(f"Loaded class {class_name} from folder and cached with {len(face_system.students_db)} students")
         
         if not success:
             return jsonify({'error': f'Failed to load class {class_name}'}), 400
