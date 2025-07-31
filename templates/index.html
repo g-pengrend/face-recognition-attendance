@@ -2369,21 +2369,26 @@
                     const standbyIndicator = document.getElementById('standbyIndicator');
                     const standbyOverlay = document.getElementById('standbyOverlay');
                     
+                    console.log('Detection status:', data); // Debug logging
+                    
                     if (data.state === 'idle' && data.idle_overlay_active) {
                         // Show idle overlay (highest priority)
                         idleOverlay.style.display = 'flex';
                         standbyIndicator.style.display = 'none';
                         standbyOverlay.style.display = 'none';
+                        console.log('Showing idle overlay');
                     } else if (data.state === 'standby') {
                         // Show standby overlay
                         idleOverlay.style.display = 'none';
                         standbyIndicator.style.display = 'block';
                         standbyOverlay.style.display = 'flex';
+                        console.log('Showing standby overlay');
                     } else {
                         // Normal active state - hide all overlays
                         idleOverlay.style.display = 'none';
                         standbyIndicator.style.display = 'none';
                         standbyOverlay.style.display = 'none';
+                        console.log('Hiding all overlays - active state');
                     }
                 })
                 .catch(error => {
@@ -2430,8 +2435,10 @@
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
                     
-                    // Hide the idle overlay
+                    // Hide ALL overlays
                     document.getElementById('idleOverlay').style.display = 'none';
+                    document.getElementById('standbyOverlay').style.display = 'none';
+                    document.getElementById('standbyIndicator').style.display = 'none';
                     
                     // Start attendance updates
                     startAttendanceUpdates();

@@ -188,16 +188,6 @@ def detection_loop():
         loop_start_time = time.time()
         current_time = time.time()
         
-        # Check if we should go idle (only if we're not already idle)
-        if not is_idle and (current_time - last_face_detection_time) > idle_timeout:
-            is_idle = True
-            is_standby = False  # Exit standby when going idle
-            idle_overlay_active = True
-            detection_state = "idle"
-            logger.info(f"System went idle after {idle_timeout} seconds of no face detection")
-            # When idle, we'll break out of the detection loop
-            break
-        
         ret, frame = camera.read()
         if not ret:
             logger.warning("Failed to read frame from camera")
@@ -237,12 +227,22 @@ def detection_loop():
                 # Calculate total time without faces (in seconds)
                 total_time_without_faces = consecutive_no_faces_count * detection_cycle_time
                 
-                # If we've had no faces for the standby timeout period, enter standby mode
+                # Check for standby mode FIRST (before idle)
                 if not is_standby and total_time_without_faces >= standby_timeout:
                     is_standby = True
                     detection_cycle_time = standby_cycle_time
                     detection_state = "standby"
                     logger.info(f"No faces for {standby_timeout}s - entering standby mode ({standby_cycle_time}s cycle)")
+                
+                # Check for idle mode AFTER standby (only if not in standby)
+                elif not is_idle and (current_time - last_face_detection_time) > idle_timeout:
+                    is_idle = True
+                    is_standby = False  # Exit standby when going idle
+                    idle_overlay_active = True
+                    detection_state = "idle"
+                    logger.info(f"System went idle after {idle_timeout} seconds of no face detection")
+                    # When idle, we'll break out of the detection loop
+                    break
             
             # Log performance if detection is slow
             if detection_time > 100:  # More than 100ms
@@ -697,9 +697,9 @@ def get_daily_summary():
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route - NO standby overlay, only idle overlay"""
+    """Video streaming route - NO overlays, only face detection boxes"""
     def generate():
-        global is_idle, idle_overlay_active, current_frame
+        global current_frame
         
         camera = get_camera()
         if not camera.isOpened():
@@ -711,7 +711,7 @@ def video_feed():
             if not ret:
                 break
             
-            # Draw detection results on frame
+            # Draw detection results on frame (only face boxes and names)
             if detection_active and face_system:
                 faces = face_system.detect_faces(frame)
                 
@@ -732,34 +732,10 @@ def video_feed():
                         label = f"Unknown #{i+1}"
                         cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
-            # ONLY show idle overlay (no standby overlay on video feed)
-            if is_idle and idle_overlay_active:
-                height, width = frame.shape[:2]
-                
-                # Create semi-transparent overlay
-                overlay = frame.copy()
-                cv2.rectangle(overlay, (0, 0), (width, height), (0, 0, 0), -1)
-                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-                
-                # Add idle message
-                idle_text = "SYSTEM IDLE - Click to Resume Detection"
-                text_size = cv2.getTextSize(idle_text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)[0]
-                text_x = (width - text_size[0]) // 2
-                text_y = height // 2
-                
-                # Draw text with black outline
-                cv2.putText(frame, idle_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
-                cv2.putText(frame, idle_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
-                
-                # Add click instruction
-                click_text = "Click anywhere on the video to resume"
-                click_size = cv2.getTextSize(click_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
-                click_x = (width - click_size[0]) // 2
-                click_y = text_y + 60
-                
-                cv2.putText(frame, click_text, (click_x, click_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
-                cv2.putText(frame, click_text, (click_x, click_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1)
+            # Store current frame for photo capture
+            current_frame = frame.copy()
             
+            # NO OVERLAYS - let the frontend handle all overlays
             # Encode frame
             ret, buffer = cv2.imencode('.jpg', frame)
             if not ret:
