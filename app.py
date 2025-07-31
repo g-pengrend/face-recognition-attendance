@@ -1023,7 +1023,7 @@ def resume_session():
 @app.route('/api/resume-from-idle', methods=['POST'])
 def resume_from_idle():
     """Resume detection from idle state"""
-    global is_idle, is_standby, idle_overlay_active, detection_active, last_face_detection_time, consecutive_no_faces_count
+    global is_idle, is_standby, idle_overlay_active, detection_active, last_face_detection_time, consecutive_no_faces_count, detection_thread
     
     try:
         # Reset all idle-related variables
@@ -1033,6 +1033,14 @@ def resume_from_idle():
         detection_active = True
         last_face_detection_time = time.time()
         consecutive_no_faces_count = 0
+        
+        # Ensure detection loop is running
+        if not detection_thread or not detection_thread.is_alive():
+            detection_thread = threading.Thread(target=detection_loop, daemon=True)
+            detection_thread.start()
+            logger.info("Restarted detection loop after resuming from idle")
+        else:
+            logger.info("Detection loop already running, resuming from idle")
         
         logger.info("Detection resumed from idle state")
         
