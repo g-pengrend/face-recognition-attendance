@@ -771,18 +771,22 @@ def set_class():
         if not class_name:
             return jsonify({'error': 'Class name is required'}), 400
         
+        logger.info(f"Setting class: {class_name}")
+        
         # Try to load from cache first
         cached_students = load_from_cache(class_name, "students")
+        logger.info(f"Cache load result: {cached_students is not None}")
+        
         if cached_students:
-            # Use cached data - set current class and restore students_db
-            success = face_system.set_current_class(class_name, use_cache=False)  # Don't use internal caching
+            logger.info(f"Using cached data for {class_name}")
+            # Use cached data without loading from folder
+            success = face_system.set_current_class_from_cache(class_name, cached_students)
             if success:
-                # Restore the cached students database
-                face_system.students_db = cached_students.get('students_db', {})
                 logger.info(f"Loaded class {class_name} from cache with {len(face_system.students_db)} students")
         else:
+            logger.info(f"No cache found, loading from folder for {class_name}")
             # Load normally and cache
-            success = face_system.set_current_class(class_name, use_cache=False)  # Don't use internal caching
+            success = face_system.set_current_class(class_name)
             if success:
                 # Cache the loaded data
                 cache_data = {
@@ -797,12 +801,15 @@ def set_class():
             return jsonify({'error': f'Failed to load class {class_name}'}), 400
         
         # Update attendance manager
-        attendance_manager.set_total_students(len(face_system.get_students_list()))
+        final_student_count = len(face_system.get_students_list())
+        attendance_manager.set_total_students(final_student_count)
+        
+        logger.info(f"Final student count: {final_student_count}")
         
         return jsonify({
             'success': True,
             'message': f'Class {class_name} loaded successfully',
-            'students_count': len(face_system.get_students_list()),
+            'students_count': final_student_count,
             'cached': cached_students is not None
         })
         
