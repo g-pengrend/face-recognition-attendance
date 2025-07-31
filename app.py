@@ -358,7 +358,15 @@ def get_camera():
     global camera, camera_mode, ip_camera_url
     
     if camera is None:
-        camera = _initialize_camera()
+        if camera_mode == "ip":
+            # For IP mode, try to initialize if we have a valid URL
+            if ip_camera_url and ip_camera_url != "http://192.168.1.100:8080/video":
+                camera = _initialize_camera()
+            else:
+                # Return None to indicate IP camera needs configuration
+                return None
+        else:
+            camera = _initialize_camera()
     
     return camera
 
@@ -431,10 +439,14 @@ def switch_camera(target_mode=None):
     # Switch mode
     camera_mode = target_mode
     
-    # Initialize new camera
-    camera = _initialize_camera()
+    # Only initialize camera immediately for local mode
+    # For IP mode, let the user configure the IP first
+    if target_mode == "local":
+        camera = _initialize_camera()
+        logger.info(f"Switched to {camera_mode} camera")
+    else:
+        logger.info(f"Switched to {camera_mode} camera mode - please configure IP address")
     
-    logger.info(f"Switched to {camera_mode} camera")
     return True
 
 def release_camera():
@@ -1769,22 +1781,19 @@ def switch_camera_endpoint():
         if target_mode != camera_mode:
             success = switch_camera(target_mode)
             if success:
-                # Check if IP camera needs configuration
                 if target_mode == "ip":
-                    camera = get_camera()
-                    if camera is None or not camera.isOpened():
-                        return jsonify({
-                            'success': True,
-                            'message': f'Switched to IP camera mode. Please configure the IP address.',
-                            'mode': camera_mode,
-                            'needs_configuration': True
-                        })
-                
-                return jsonify({
-                    'success': True,
-                    'message': f'Switched to {camera_mode} camera',
-                    'mode': camera_mode
-                })
+                    return jsonify({
+                        'success': True,
+                        'message': 'Switched to IP camera mode. Please configure the IP address.',
+                        'mode': camera_mode,
+                        'needs_configuration': True
+                    })
+                else:
+                    return jsonify({
+                        'success': True,
+                        'message': f'Switched to {camera_mode} camera',
+                        'mode': camera_mode
+                    })
             else:
                 return jsonify({
                     'success': False,
