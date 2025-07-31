@@ -707,7 +707,7 @@
 
         @media (min-width: 1200px) {
             .container-fluid {
-                padding-left: 25px; /* Reduced from 30px */
+                padding-left: 25px /* Reduced from 30px */
                 padding-right: 25px;
             }
         }
@@ -832,6 +832,161 @@
                 margin: 15px 0;
             }
         }
+
+        /* Add this after the class selector or in the control panel */
+        .camera-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .camera-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .camera-label {
+            font-weight: 600;
+        }
+
+        .camera-toggle-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .camera-btn {
+            padding: 8px 16px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .camera-btn.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .camera-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-indicator.status-inactive {
+            background-color: #dc3545;
+        }
+
+        .ip-camera-settings {
+            margin-top: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .input-group input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .input-group button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .input-group button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Add these styles */
+        .camera-controls {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            border: 1px solid #dee2e6;
+        }
+
+        .camera-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .camera-label {
+            font-weight: 600;
+            color: #495057;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .camera-toggle-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .camera-btn {
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .camera-btn.active {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border-color: #4facfe;
+            color: white;
+        }
+
+        .camera-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+
+        .ip-camera-settings {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .ip-camera-settings .input-group {
+            max-width: 400px;
+        }
+
+        @media (max-width: 768px) {
+            .camera-toggle-container {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .camera-toggle-buttons {
+                width: 100%;
+            }
+            
+            .camera-btn {
+                flex: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -894,6 +1049,39 @@
                 <button class="btn btn-outline-light btn-sm" onclick="clearCache()">
                     <i class="fas fa-trash"></i> Clear Cache
                 </button>
+            </div>
+
+            <!-- Add this after the class selector or in the control panel -->
+            <div class="camera-controls">
+                <div class="camera-toggle-container">
+                    <label class="camera-label">
+                        <i class="fas fa-camera"></i>
+                        Camera Source:
+                    </label>
+                    <div class="camera-toggle-buttons">
+                        <button id="localCameraBtn" class="btn btn-outline-primary btn-sm camera-btn active">
+                            <i class="fas fa-desktop"></i> Local
+                        </button>
+                        <button id="ipCameraBtn" class="btn btn-outline-primary btn-sm camera-btn">
+                            <i class="fas fa-mobile-alt"></i> Phone
+                        </button>
+                    </div>
+                    <div class="camera-status">
+                        <span id="cameraStatus" class="status-indicator status-inactive"></span>
+                        <span id="cameraStatusText">Disconnected</span>
+                    </div>
+                </div>
+                
+                <div id="ipCameraSettings" class="ip-camera-settings" style="display: none;">
+                    <div class="input-group">
+                        <input type="text" id="ipCameraUrl" class="form-control" 
+                               placeholder="http://192.168.1.100:8080/video" 
+                               value="http://192.168.1.100:8080/video">
+                        <button class="btn btn-primary" onclick="setIpCameraUrl()">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Main Content -->
@@ -2891,6 +3079,112 @@
                 showAlert('danger', 'Error getting cache stats: ' + error.message);
             }
         }
+
+        // Add this to your existing JavaScript
+        let currentCameraMode = 'local';
+
+        // Camera toggle functions
+        function switchCamera(mode) {
+            if (detectionActive) {
+                showAlert('Cannot switch camera while detection is active', 'warning');
+                return;
+            }
+            
+            fetch('/api/camera/switch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentCameraMode = data.mode;
+                    updateCameraUI();
+                    showAlert(`Switched to ${data.mode} camera`, 'success');
+                    // Refresh video feed
+                    if (videoFeed) {
+                        videoFeed.src = '/video_feed?' + new Date().getTime();
+                    }
+                } else {
+                    showAlert(data.message, 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('Error switching camera:', error);
+                showAlert('Error switching camera', 'error');
+            });
+        }
+
+        function setIpCameraUrl() {
+            const url = document.getElementById('ipCameraUrl').value;
+            
+            fetch('/api/camera/set-ip', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ip_url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('IP camera URL updated', 'success');
+                } else {
+                    showAlert(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error setting IP camera URL:', error);
+                showAlert('Error updating IP camera URL', 'error');
+            });
+        }
+
+        function updateCameraUI() {
+            const localBtn = document.getElementById('localCameraBtn');
+            const ipBtn = document.getElementById('ipCameraBtn');
+            const ipSettings = document.getElementById('ipCameraSettings');
+            
+            // Update button states
+            localBtn.classList.toggle('active', currentCameraMode === 'local');
+            ipBtn.classList.toggle('active', currentCameraMode === 'ip');
+            
+            // Show/hide IP settings
+            ipSettings.style.display = currentCameraMode === 'ip' ? 'block' : 'none';
+        }
+
+        function updateCameraStatus() {
+            fetch('/api/camera/status')
+            .then(response => response.json())
+            .then(data => {
+                const statusIndicator = document.getElementById('cameraStatus');
+                const statusText = document.getElementById('cameraStatusText');
+                
+                if (data.connected) {
+                    statusIndicator.className = 'status-indicator status-active';
+                    statusText.textContent = `${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)} Camera Connected`;
+                } else {
+                    statusIndicator.className = 'status-indicator status-inactive';
+                    statusText.textContent = 'Camera Disconnected';
+                }
+                
+                currentCameraMode = data.mode;
+                updateCameraUI();
+            })
+            .catch(error => {
+                console.error('Error getting camera status:', error);
+            });
+        }
+
+        // Add event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('localCameraBtn').addEventListener('click', () => switchCamera('local'));
+            document.getElementById('ipCameraBtn').addEventListener('click', () => switchCamera('ip'));
+            
+            // Update camera status periodically
+            updateCameraStatus();
+            setInterval(updateCameraStatus, 5000); // Update every 5 seconds
+        });
     </script>
 </body>
 </html> 
