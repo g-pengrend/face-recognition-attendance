@@ -37,6 +37,17 @@ current_faces = []
 captured_frame = None  # Store the frame when screenshot is taken
 captured_faces = []    # Store faces from the captured frame
 
+# Adaptive detection variables
+last_face_detection_time = time.time()
+idle_timeout = 300  # 5 minutes in seconds
+is_idle = False
+is_standby = False  # New standby state
+idle_overlay_active = False
+detection_cycle_time = 0.1  # Default cycle time (100ms)
+standby_cycle_time = 1.0  # Slower cycle when in standby mode
+standby_timeout = 10  # Seconds without faces before entering standby
+consecutive_no_faces_count = 0  # Track consecutive frames with no faces
+
 class FaceSamplingManager:
     def __init__(self, batch_size=5, batch_interval=2.0):
         self.batch_size = batch_size
@@ -156,22 +167,35 @@ def release_camera():
         camera = None
 
 def detection_loop():
-    """Detection loop with smart rotating face sampling and performance monitoring"""
-    global detection_active, face_system, attendance_manager, face_sampling_manager, current_frame, current_faces
+    """Adaptive detection loop with standby and idle states"""
+    global detection_active, face_system, attendance_manager, current_frame, current_faces
+    global last_face_detection_time, is_idle, is_standby, idle_overlay_active, detection_cycle_time
+    global consecutive_no_faces_count
     
     camera = get_camera()
     if not camera.isOpened():
         logger.error("Failed to open camera")
         return
     
-    logger.info("Starting detection loop with performance monitoring")
+    logger.info("Starting adaptive detection loop")
     
     while detection_active:
         loop_start_time = time.time()
+        current_time = time.time()
+        
+        # Check if we should go idle (only if we're not already idle)
+        if not is_idle and (current_time - last_face_detection_time) > idle_timeout:
+            is_idle = True
+            is_standby = False  # Exit standby when going idle
+            idle_overlay_active = True
+            logger.info(f"System went idle after {idle_timeout} seconds of no face detection")
+            # When idle, we'll break out of the detection loop
+            break
+        
         ret, frame = camera.read()
         if not ret:
             logger.warning("Failed to read frame from camera")
-            time.sleep(0.1)
+            time.sleep(detection_cycle_time)
             continue
         
         try:
@@ -183,6 +207,30 @@ def detection_loop():
             all_faces = face_system.detect_faces(frame)
             detection_time = (time.time() - detection_start) * 1000  # Convert to milliseconds
             current_faces = all_faces  # Store for photo capture
+            
+            # Update detection state based on faces found
+            if all_faces:
+                # Faces detected - reset counters and use normal speed
+                last_face_detection_time = current_time
+                consecutive_no_faces_count = 0
+                
+                # Exit standby mode if we were in it
+                if is_standby:
+                    is_standby = False
+                    detection_cycle_time = 0.1
+                    logger.info("Face detected - exiting standby mode, returning to normal speed")
+                else:
+                    detection_cycle_time = 0.1  # Normal speed when faces are present
+                    logger.debug("Faces detected - using normal detection speed")
+            else:
+                # No faces detected - increment counter
+                consecutive_no_faces_count += 1
+                
+                # If we've had no faces for the timeout period, enter standby mode
+                if not is_standby and consecutive_no_faces_count * detection_cycle_time >= standby_timeout:
+                    is_standby = True
+                    detection_cycle_time = standby_cycle_time
+                    logger.info(f"No faces for {standby_timeout}s - entering standby mode ({standby_cycle_time}s cycle)")
             
             # Log performance if detection is slow
             if detection_time > 100:  # More than 100ms
@@ -206,13 +254,73 @@ def detection_loop():
             if total_loop_time > 200:  # More than 200ms total
                 logger.warning(f"Slow detection loop: {total_loop_time:.1f}ms total")
             
-            time.sleep(0.1)  # Reduced sleep time for faster response
+            # Sleep based on current cycle time
+            time.sleep(detection_cycle_time)
             
         except Exception as e:
             logger.error(f"Error in detection loop: {e}")
-            time.sleep(0.1)
+            time.sleep(detection_cycle_time)
+    
+    # If we're here and idle, start the idle monitoring loop
+    if is_idle:
+        idle_monitoring_loop()
     
     logger.info("Detection loop stopped")
+
+def resume_detection_from_idle():
+    """Resume detection from idle state"""
+    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, consecutive_no_faces_count
+    
+    if is_idle:
+        is_idle = False
+        is_standby = False
+        idle_overlay_active = False
+        detection_cycle_time = 0.1
+        last_face_detection_time = time.time()
+        consecutive_no_faces_count = 0
+        logger.info("Detection resumed from idle state")
+        
+        # Restart the detection loop
+        global detection_thread
+        if detection_thread and detection_thread.is_alive():
+            # The thread will naturally exit the idle loop and restart detection
+            pass
+        else:
+            # Start a new detection thread
+            detection_thread = threading.Thread(target=detection_loop, daemon=True)
+            detection_thread.start()
+        
+        return True
+    else:
+        return False
+
+# Updated API endpoint to include standby status
+@app.route('/api/detection-status')
+def get_detection_status():
+    """Get current detection status including idle and standby states"""
+    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time
+    
+    current_time = time.time()
+    time_since_last_detection = current_time - last_face_detection_time
+    
+    # Determine current state
+    if is_idle:
+        state = "idle"
+    elif is_standby:
+        state = "standby"
+    else:
+        state = "active"
+    
+    return jsonify({
+        'state': state,
+        'is_idle': is_idle,
+        'is_standby': is_standby,
+        'idle_overlay_active': idle_overlay_active,
+        'detection_cycle_time': detection_cycle_time,
+        'time_since_last_detection': time_since_last_detection,
+        'idle_timeout': idle_timeout,
+        'standby_timeout': standby_timeout
+    })
 
 @app.route('/')
 def index():
