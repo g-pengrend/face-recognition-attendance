@@ -1023,7 +1023,7 @@ def resume_session():
 @app.route('/api/resume-from-idle', methods=['POST'])
 def resume_from_idle():
     """Resume detection from idle state"""
-    global is_idle, is_standby, idle_overlay_active, detection_active, last_face_detection_time, consecutive_no_faces_count, detection_thread
+    global is_idle, is_standby, idle_overlay_active, detection_active, last_face_detection_time, consecutive_no_faces_count, detection_thread, detection_state
     
     try:
         # Reset all idle-related variables
@@ -1031,8 +1031,12 @@ def resume_from_idle():
         is_standby = False
         idle_overlay_active = False
         detection_active = True
+        detection_state = 'active'  # Explicitly set detection state
         last_face_detection_time = time.time()
         consecutive_no_faces_count = 0
+        
+        # Force a small delay to ensure the detection loop picks up the changes
+        time.sleep(0.1)
         
         # Ensure detection loop is running
         if not detection_thread or not detection_thread.is_alive():
@@ -1042,11 +1046,17 @@ def resume_from_idle():
         else:
             logger.info("Detection loop already running, resuming from idle")
         
-        logger.info("Detection resumed from idle state")
+        logger.info(f"Detection resumed from idle state. Current state: is_idle={is_idle}, is_standby={is_standby}, detection_state={detection_state}")
         
         return jsonify({
             'success': True,
-            'message': 'Detection resumed from idle state'
+            'message': 'Detection resumed from idle state',
+            'debug_info': {
+                'is_idle': is_idle,
+                'is_standby': is_standby,
+                'detection_active': detection_active,
+                'detection_state': detection_state
+            }
         })
         
     except Exception as e:
