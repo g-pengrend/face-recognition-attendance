@@ -37,14 +37,18 @@ current_faces = []
 captured_frame = None  # Store the frame when screenshot is taken
 captured_faces = []    # Store faces from the captured frame
 
+# Add a new global variable to track the actual detection state
+detection_state = "stopped"  # "active", "standby", "idle", "stopped"
+
 # Adaptive detection variables
 last_face_detection_time = time.time()
-idle_timeout = 300  # 5 minutes in seconds
+idle_timeout = 30  # 30 seconds for testing
 is_idle = False
 is_standby = False  # New standby state
 idle_overlay_active = False
 detection_cycle_time = 0.1  # Default cycle time (100ms)
-standby_cycle_time = 1.0  # Slower cycle when in standby mode
+# Update the standby cycle time
+standby_cycle_time = 2.0  # Slower cycle when in standby mode (2 seconds)
 standby_timeout = 10  # Seconds without faces before entering standby
 consecutive_no_faces_count = 0  # Track consecutive frames with no faces
 
@@ -167,10 +171,10 @@ def release_camera():
         camera = None
 
 def detection_loop():
-    """Adaptive detection loop with standby and idle states"""
+    """Adaptive detection loop with proper state management"""
     global detection_active, face_system, attendance_manager, current_frame, current_faces
     global last_face_detection_time, is_idle, is_standby, idle_overlay_active, detection_cycle_time
-    global consecutive_no_faces_count
+    global consecutive_no_faces_count, detection_state
     
     camera = get_camera()
     if not camera.isOpened():
@@ -178,6 +182,7 @@ def detection_loop():
         return
     
     logger.info("Starting adaptive detection loop")
+    detection_state = "active"
     
     while detection_active:
         loop_start_time = time.time()
@@ -188,6 +193,7 @@ def detection_loop():
             is_idle = True
             is_standby = False  # Exit standby when going idle
             idle_overlay_active = True
+            detection_state = "idle"
             logger.info(f"System went idle after {idle_timeout} seconds of no face detection")
             # When idle, we'll break out of the detection loop
             break
@@ -218,9 +224,11 @@ def detection_loop():
                 if is_standby:
                     is_standby = False
                     detection_cycle_time = 0.1
+                    detection_state = "active"
                     logger.info("Face detected - exiting standby mode, returning to normal speed")
                 else:
                     detection_cycle_time = 0.1  # Normal speed when faces are present
+                    detection_state = "active"
                     logger.debug("Faces detected - using normal detection speed")
             else:
                 # No faces detected - increment counter
@@ -230,6 +238,7 @@ def detection_loop():
                 if not is_standby and consecutive_no_faces_count * detection_cycle_time >= standby_timeout:
                     is_standby = True
                     detection_cycle_time = standby_cycle_time
+                    detection_state = "standby"
                     logger.info(f"No faces for {standby_timeout}s - entering standby mode ({standby_cycle_time}s cycle)")
             
             # Log performance if detection is slow
@@ -267,9 +276,33 @@ def detection_loop():
     
     logger.info("Detection loop stopped")
 
+def idle_monitoring_loop():
+    """Separate loop that runs when system is idle - only checks for resume signal"""
+    global detection_active, is_idle, idle_overlay_active, last_face_detection_time, detection_state
+    
+    logger.info("Starting idle monitoring loop")
+    
+    while detection_active and is_idle:
+        # In idle mode, we only need to:
+        # 1. Keep the camera frame updated for the overlay
+        # 2. Check if we should resume detection
+        # 3. Sleep for a longer period since we're not doing face detection
+        
+        camera = get_camera()
+        if camera.isOpened():
+            ret, frame = camera.read()
+            if ret:
+                global current_frame
+                current_frame = frame.copy()
+        
+        # Sleep for 2 seconds - we're not doing any detection work
+        time.sleep(2.0)
+    
+    logger.info("Idle monitoring loop stopped")
+
 def resume_detection_from_idle():
     """Resume detection from idle state"""
-    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, consecutive_no_faces_count
+    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, consecutive_no_faces_count, detection_state
     
     if is_idle:
         is_idle = False
@@ -278,6 +311,7 @@ def resume_detection_from_idle():
         detection_cycle_time = 0.1
         last_face_detection_time = time.time()
         consecutive_no_faces_count = 0
+        detection_state = "active"
         logger.info("Detection resumed from idle state")
         
         # Restart the detection loop
@@ -294,43 +328,11 @@ def resume_detection_from_idle():
     else:
         return False
 
-# Updated API endpoint to include standby status
-@app.route('/api/detection-status')
-def get_detection_status():
-    """Get current detection status including idle and standby states"""
-    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time
-    
-    current_time = time.time()
-    time_since_last_detection = current_time - last_face_detection_time
-    
-    # Determine current state
-    if is_idle:
-        state = "idle"
-    elif is_standby:
-        state = "standby"
-    else:
-        state = "active"
-    
-    return jsonify({
-        'state': state,
-        'is_idle': is_idle,
-        'is_standby': is_standby,
-        'idle_overlay_active': idle_overlay_active,
-        'detection_cycle_time': detection_cycle_time,
-        'time_since_last_detection': time_since_last_detection,
-        'idle_timeout': idle_timeout,
-        'standby_timeout': standby_timeout
-    })
-
-@app.route('/')
-def index():
-    """Main page"""
-    return render_template('index.html')
-
+# Updated API endpoints to show proper state
 @app.route('/api/status')
 def get_status():
-    """Get system status"""
-    global face_system, attendance_manager, detection_active
+    """Get system status with proper detection state"""
+    global face_system, attendance_manager, detection_active, detection_state
     
     # Get current attendance data
     current_attendance = {}
@@ -349,12 +351,67 @@ def get_status():
     status = {
         'face_system_ready': face_system is not None and face_system.initialized,
         'detection_active': detection_active,
+        'detection_state': detection_state,  # New field showing actual state
         'students_count': len(all_students),
         'current_session': convert_numpy_types(current_attendance)
     }
     
-    logger.info(f"Status: detection_active={detection_active}, present_students={current_attendance.get('present_students', 0)}")
+    logger.info(f"Status: detection_active={detection_active}, detection_state={detection_state}, present_students={current_attendance.get('present_students', 0)}")
     return jsonify(status)
+
+@app.route('/api/detection-status')
+def get_detection_status():
+    """Get current detection status including idle and standby states"""
+    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, detection_state
+    
+    current_time = time.time()
+    time_since_last_detection = current_time - last_face_detection_time
+    
+    return jsonify({
+        'state': detection_state,
+        'is_idle': is_idle,
+        'is_standby': is_standby,
+        'idle_overlay_active': idle_overlay_active,
+        'detection_cycle_time': detection_cycle_time,
+        'time_since_last_detection': time_since_last_detection,
+        'idle_timeout': idle_timeout,
+        'standby_timeout': standby_timeout
+    })
+
+# Update the attendance API to show proper state
+@app.route('/api/attendance')
+def get_attendance():
+    """Get current attendance status with proper detection state"""
+    global attendance_manager, detection_active, face_system, detection_state
+    
+    if not attendance_manager:
+        return jsonify({'detection_active': detection_active, 'detection_state': detection_state, 'attendance': {}}), 200
+    
+    attendance = attendance_manager.get_current_attendance()
+    
+    # Get all students list
+    all_students = []
+    if face_system:
+        all_students = face_system.get_students_list()
+    
+    # Add all_students to attendance
+    if attendance:
+        attendance['all_students'] = all_students
+    
+    # Add detection status to response
+    response = {
+        'detection_active': detection_active,
+        'detection_state': detection_state,  # New field
+        'attendance': convert_numpy_types(attendance)
+    }
+    
+    logger.info(f"Attendance API: detection_active={detection_active}, detection_state={detection_state}, present_students={attendance.get('present_students', 0)}")
+    return jsonify(response)
+
+@app.route('/')
+def index():
+    """Main page"""
+    return render_template('index.html')
 
 @app.route('/api/students')
 def get_students():
@@ -428,34 +485,6 @@ def stop_detection():
     except Exception as e:
         logger.error(f"Error stopping detection: {e}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/api/attendance')
-def get_attendance():
-    """Get current attendance status"""
-    global attendance_manager, detection_active, face_system
-    
-    if not attendance_manager:
-        return jsonify({'detection_active': detection_active, 'attendance': {}}), 200
-    
-    attendance = attendance_manager.get_current_attendance()
-    
-    # Get all students list
-    all_students = []
-    if face_system:
-        all_students = face_system.get_students_list()
-    
-    # Add all_students to attendance
-    if attendance:
-        attendance['all_students'] = all_students
-    
-    # Add detection status to response
-    response = {
-        'detection_active': detection_active,
-        'attendance': convert_numpy_types(attendance)
-    }
-    
-    logger.info(f"Attendance API: detection_active={detection_active}, present_students={attendance.get('present_students', 0)}")
-    return jsonify(response)
 
 @app.route('/api/sessions')
 def get_sessions():
@@ -667,8 +696,10 @@ def get_daily_summary():
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route"""
+    """Video streaming route with standby and idle overlays"""
     def generate():
+        global is_idle, is_standby, idle_overlay_active, current_frame
+        
         camera = get_camera()
         if not camera.isOpened():
             logger.error("Failed to open camera for streaming")
@@ -699,6 +730,71 @@ def video_feed():
                         # Show face index for unknown faces
                         label = f"Unknown #{i+1}"
                         cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            
+            # Add standby overlay if system is in standby mode
+            if is_standby:
+                height, width = frame.shape[:2]
+                
+                # Create semi-transparent overlay (lighter than idle)
+                overlay = frame.copy()
+                cv2.rectangle(overlay, (0, 0), (width, height), (0, 0, 0), -1)
+                cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
+                
+                # Add standby message
+                standby_text = "STANDBY MODE - Please stand still for detection"
+                text_size = cv2.getTextSize(standby_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
+                text_x = (width - text_size[0]) // 2
+                text_y = height // 2 - 30
+                
+                # Draw text with black outline
+                cv2.putText(frame, standby_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
+                cv2.putText(frame, standby_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 2)
+                
+                # Add instruction
+                instruction_text = "Detection will resume automatically when you are detected"
+                instruction_size = cv2.getTextSize(instruction_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+                instruction_x = (width - instruction_size[0]) // 2
+                instruction_y = text_y + 50
+                
+                cv2.putText(frame, instruction_text, (instruction_x, instruction_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+                cv2.putText(frame, instruction_text, (instruction_x, instruction_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
+                
+                # Add cycle indicator
+                cycle_text = f"Detection cycle: {standby_cycle_time}s"
+                cycle_size = cv2.getTextSize(cycle_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                cycle_x = (width - cycle_size[0]) // 2
+                cycle_y = instruction_y + 40
+                
+                cv2.putText(frame, cycle_text, (cycle_x, cycle_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                cv2.putText(frame, cycle_text, (cycle_x, cycle_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+            
+            # Add idle overlay if system is idle (keep existing idle overlay code)
+            elif is_idle and idle_overlay_active:
+                height, width = frame.shape[:2]
+                
+                # Create semi-transparent overlay
+                overlay = frame.copy()
+                cv2.rectangle(overlay, (0, 0), (width, height), (0, 0, 0), -1)
+                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+                
+                # Add idle message
+                idle_text = "SYSTEM IDLE - Click to Resume Detection"
+                text_size = cv2.getTextSize(idle_text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)[0]
+                text_x = (width - text_size[0]) // 2
+                text_y = height // 2
+                
+                # Draw text with black outline
+                cv2.putText(frame, idle_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
+                cv2.putText(frame, idle_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
+                
+                # Add click instruction
+                click_text = "Click anywhere on the video to resume"
+                click_size = cv2.getTextSize(click_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+                click_x = (width - click_size[0]) // 2
+                click_y = text_y + 60
+                
+                cv2.putText(frame, click_text, (click_x, click_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+                cv2.putText(frame, click_text, (click_x, click_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1)
             
             # Encode frame
             ret, buffer = cv2.imencode('.jpg', frame)

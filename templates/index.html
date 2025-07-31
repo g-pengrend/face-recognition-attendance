@@ -418,6 +418,69 @@
         .student-dropdown select:focus {
             box-shadow: none;
         }
+
+        /* Standby state indicator */
+        .standby-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 193, 7, 0.9);
+            color: #000;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            z-index: 15;
+            display: none;
+        }
+        
+        .standby-indicator i {
+            margin-right: 5px;
+        }
+
+        /* Idle overlay styles */
+        .idle-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            color: white;
+            text-align: center;
+        }
+
+        .idle-overlay h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .idle-overlay p {
+            font-size: 1rem;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
+
+        .btn-resume {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-resume:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -531,6 +594,21 @@
                                         <i class="fas fa-check-circle"></i>
                                         <span id="attendanceToastText"></span>
                                     </div>
+                                    
+                                    <!-- Standby indicator -->
+                                    <div id="standbyIndicator" class="standby-indicator">
+                                        <i class="fas fa-clock"></i> Standby Mode
+                                    </div>
+                                    
+                                    <!-- Idle overlay -->
+                                    <div id="idleOverlay" class="idle-overlay">
+                                        <h3><i class="fas fa-pause-circle"></i> System Idle</h3>
+                                        <p>No faces detected for 5 minutes</p>
+                                        <button class="btn-resume" onclick="resumeDetection()">
+                                            <i class="fas fa-play"></i> Resume Detection
+                                        </button>
+                                    </div>
+                                    
                                     <img src="/video_feed" class="video-feed" alt="Video Feed" id="videoFeed">
                                 </div>
                                 <!-- Add this button below the video feed -->
@@ -2225,6 +2303,66 @@
                 // Hide progress
                 document.getElementById('createClassProgress').style.display = 'none';
             }
+        }
+
+        // Check detection status for standby/idle states
+        function checkDetectionStatus() {
+            fetch('/api/detection-status')
+                .then(response => response.json())
+                .then(data => {
+                    const idleOverlay = document.getElementById('idleOverlay');
+                    const standbyIndicator = document.getElementById('standbyIndicator');
+                    
+                    if (data.state === 'idle' && data.idle_overlay_active) {
+                        idleOverlay.style.display = 'flex';
+                        standbyIndicator.style.display = 'none';
+                    } else if (data.state === 'standby') {
+                        idleOverlay.style.display = 'none';
+                        standbyIndicator.style.display = 'block';
+                    } else {
+                        idleOverlay.style.display = 'none';
+                        standbyIndicator.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking detection status:', error);
+                });
+        }
+
+        // Resume detection from idle state
+        async function resumeDetection() {
+            try {
+                const response = await fetch('/api/resume-detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', 'Detection resumed successfully!');
+                    // Hide the idle overlay
+                    document.getElementById('idleOverlay').style.display = 'none';
+                } else {
+                    showAlert('danger', result.error || 'Failed to resume detection');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error resuming detection: ' + error.message);
+            }
+        }
+
+        // Update the startStatusUpdates function to include detection status checks
+        function startStatusUpdates() {
+            // Update status every 5 seconds
+            statusUpdateInterval = setInterval(() => {
+                updateStatus();
+                // Also check detection status for standby/idle states
+                if (isDetectionActive) {
+                    checkDetectionStatus();
+                }
+            }, 5000);
         }
     </script>
 </body>
