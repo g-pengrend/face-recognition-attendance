@@ -146,7 +146,9 @@
         
         .video-feed {
             width: 100%;
-            height: 350px;
+            height: auto;
+            max-height: 70vh; /* 70% of viewport height */
+            min-height: 400px; /* Minimum height */
             object-fit: cover;
         }
         
@@ -445,41 +447,47 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 10;
+            z-index: 25; /* Higher than attendance toast */
             color: white;
             text-align: center;
+            border-radius: 10px; /* Match video container */
         }
 
         .idle-overlay h3 {
-            font-size: 1.5rem;
-            margin-bottom: 10px;
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            font-weight: 600;
         }
 
         .idle-overlay p {
-            font-size: 1rem;
-            margin-bottom: 20px;
-            opacity: 0.8;
+            font-size: 1.1rem;
+            margin-bottom: 25px;
+            opacity: 0.9;
         }
 
         .btn-resume {
             background: linear-gradient(135deg, #28a745, #20c997);
             border: none;
             color: white;
-            padding: 10px 20px;
-            border-radius: 20px;
+            padding: 12px 24px;
+            border-radius: 25px;
             font-weight: 600;
+            font-size: 1rem;
             cursor: pointer;
             transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .btn-resume:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+            background: linear-gradient(135deg, #20c997, #28a745);
         }
     </style>
 </head>
@@ -2329,27 +2337,67 @@
                 });
         }
 
-        // Resume detection from idle state
+        // Resume detection from idle state - using existing endpoints
         async function resumeDetection() {
             try {
-                const response = await fetch('/api/resume-detection', {
+                // Since there's no /api/resume-detection endpoint, 
+                // we'll restart the detection process using the existing start endpoint
+                const classSelect = document.getElementById('classSelect');
+                const sessionName = document.getElementById('sessionName').value.trim();
+                const sessionStartTime = document.getElementById('sessionStartTime').value;
+                
+                if (!classSelect.value || !sessionName || !sessionStartTime) {
+                    showAlert('danger', 'Please ensure all session details are filled before resuming.');
+                    return;
+                }
+
+                // Show loading state
+                const resumeBtn = event.target;
+                const originalText = resumeBtn.innerHTML;
+                resumeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resuming...';
+                resumeBtn.disabled = true;
+
+                const response = await fetch('/api/start-detection', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                    }
+                    },
+                    body: JSON.stringify({ 
+                        session_name: sessionName,
+                        session_start_time: sessionStartTime,
+                        class_name: classSelect.value
+                    })
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    showAlert('success', 'Detection resumed successfully!');
+                    currentSessionId = result.session_id;
+                    isDetectionActive = true;
+                    
+                    // Update button states
+                    const startBtn = document.getElementById('startBtn');
+                    const stopBtn = document.getElementById('stopBtn');
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
                     // Hide the idle overlay
                     document.getElementById('idleOverlay').style.display = 'none';
+                    
+                    // Start attendance updates
+                    startAttendanceUpdates();
+                    
+                    showAlert('success', 'Detection resumed successfully!');
                 } else {
                     showAlert('danger', result.error || 'Failed to resume detection');
                 }
             } catch (error) {
                 showAlert('danger', 'Error resuming detection: ' + error.message);
+            } finally {
+                // Reset button state
+                const resumeBtn = event.target;
+                resumeBtn.innerHTML = '<i class="fas fa-play"></i> Resume Detection';
+                resumeBtn.disabled = false;
             }
         }
 
