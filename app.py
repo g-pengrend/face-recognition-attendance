@@ -234,8 +234,11 @@ def detection_loop():
                 # No faces detected - increment counter
                 consecutive_no_faces_count += 1
                 
-                # If we've had no faces for the timeout period, enter standby mode
-                if not is_standby and consecutive_no_faces_count * detection_cycle_time >= standby_timeout:
+                # Calculate total time without faces (in seconds)
+                total_time_without_faces = consecutive_no_faces_count * detection_cycle_time
+                
+                # If we've had no faces for the standby timeout period, enter standby mode
+                if not is_standby and total_time_without_faces >= standby_timeout:
                     is_standby = True
                     detection_cycle_time = standby_cycle_time
                     detection_state = "standby"
@@ -694,9 +697,9 @@ def get_daily_summary():
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route with standby and idle overlays"""
+    """Video streaming route - NO standby overlay, only idle overlay"""
     def generate():
-        global is_idle, is_standby, idle_overlay_active, current_frame
+        global is_idle, idle_overlay_active, current_frame
         
         camera = get_camera()
         if not camera.isOpened():
@@ -729,7 +732,7 @@ def video_feed():
                         label = f"Unknown #{i+1}"
                         cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
-            # Add idle overlay if system is idle (keep existing idle overlay code)
+            # ONLY show idle overlay (no standby overlay on video feed)
             if is_idle and idle_overlay_active:
                 height, width = frame.shape[:2]
                 

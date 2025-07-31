@@ -2393,10 +2393,11 @@
 
         // Resume detection from idle state - using existing resume session endpoint
         async function resumeDetection() {
+            const resumeBtn = event.target;
+            const originalText = resumeBtn.innerHTML;
+            
             try {
                 // Show loading state
-                const resumeBtn = event.target;
-                const originalText = resumeBtn.innerHTML;
                 resumeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resuming...';
                 resumeBtn.disabled = true;
 
@@ -2410,6 +2411,10 @@
                         session_id: currentSessionId // Use the current session ID
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 
                 const result = await response.json();
                 
@@ -2440,14 +2445,14 @@
                     showAlert('success', 'Detection resumed successfully!');
                     
                 } else {
-                    showAlert('danger', result.error || 'Failed to resume detection');
+                    throw new Error(result.error || 'Failed to resume detection');
                 }
             } catch (error) {
+                console.error('Error resuming detection:', error);
                 showAlert('danger', 'Error resuming detection: ' + error.message);
             } finally {
-                // Reset button state
-                const resumeBtn = event.target;
-                resumeBtn.innerHTML = '<i class="fas fa-play"></i> Resume Detection';
+                // Always reset button state, even if there was an error
+                resumeBtn.innerHTML = originalText;
                 resumeBtn.disabled = false;
             }
         }
