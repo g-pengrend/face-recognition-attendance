@@ -34,7 +34,15 @@ def test_imports():
     try:
         import onnxruntime as ort
         print(f"✓ ONNX Runtime version: {ort.__version__}")
-        print(f"  Available providers: {ort.get_available_providers()}")
+        
+        # Test for available providers (newer API)
+        try:
+            providers = ort.get_available_providers()
+            print(f"  Available providers: {providers}")
+        except AttributeError:
+            # Fallback for older versions
+            print("  Provider information not available")
+            
     except ImportError as e:
         print(f"✗ ONNX Runtime import failed: {e}")
         return False
@@ -144,6 +152,42 @@ def test_files():
     
     return True
 
+def test_hardware_acceleration():
+    """Test hardware acceleration availability"""
+    print("\nTesting hardware acceleration...")
+    
+    try:
+        import onnxruntime as ort
+        ort.preload_dlls()
+        providers = ort.get_available_providers()
+        
+        print(f"Available providers: {providers}")
+        
+        if 'CUDAExecutionProvider' in providers:
+            print("✓ CUDA provider detected")
+            
+            # Test if CUDA actually works
+            try:
+                test_providers = [('CUDAExecutionProvider', {})]
+                ort.InferenceSession("", providers=test_providers)
+                print("✓ CUDA acceleration working")
+                return "CUDA"
+            except Exception as e:
+                print(f"⚠ CUDA detected but failed to load: {e}")
+                print("  → Install CUDA Toolkit or Runtime Libraries")
+                return "CUDA_FAILED"
+                
+        elif 'CoreMLExecutionProvider' in providers:
+            print("✓ CoreML acceleration available (Apple Silicon)")
+            return "CoreML"
+        else:
+            print("⚠ Using CPU-only execution")
+            return "CPU"
+            
+    except Exception as e:
+        print(f"✗ Error testing hardware acceleration: {e}")
+        return "Unknown"
+
 def main():
     """Run all tests"""
     print("=" * 50)
@@ -156,7 +200,8 @@ def main():
         ("Package Imports", test_imports),
         ("Camera Access", test_camera),
         ("Face Recognition", test_face_recognition),
-        ("Attendance Manager", test_attendance_manager)
+        ("Attendance Manager", test_attendance_manager),
+        ("Hardware Acceleration", test_hardware_acceleration)
     ]
     
     results = []

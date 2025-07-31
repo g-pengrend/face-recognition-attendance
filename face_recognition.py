@@ -198,43 +198,55 @@ class FaceRecognitionSystem:
             self.logger.info(f"Loaded {len(self.students_db)} students")
 
     def _initialize_insightface(self):
-        """Initialize InsightFace with forced CoreML optimization"""
+        """Initialize InsightFace with hardware acceleration"""
         try:
             import onnxruntime as ort
             
-            # Force CoreML provider configuration
-            providers = [
-                ('CoreMLExecutionProvider', {
-                    'device_type': 'CPU',  # CoreML will use ANE/GPU automatically
-                    'precision': 'FP16',   # Use half precision for better performance
-                }),
-                ('CPUExecutionProvider', {})
-            ]
-            
-            # Set environment variables to force CoreML
-            os.environ['ONNXRUNTIME_PROVIDER_NAMES'] = 'CoreMLExecutionProvider,CPUExecutionProvider'
-            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-            
+            # Detect available providers
             available_providers = ort.get_available_providers()
-            self.logger.info(f"ONNX Runtime available providers: {available_providers}")
+            self.logger.info(f"Available providers: {available_providers}")
             
-            # Initialize InsightFace with explicit provider configuration
+            # Configure providers based on available hardware
+            if 'CUDAExecutionProvider' in available_providers:
+                # CUDA GPU acceleration
+                providers = [
+                    ('CUDAExecutionProvider', {
+                        'device_id': 0,
+                        'arena_extend_strategy': 'kNextPowerOfTwo',
+                        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+                        'cudnn_conv_use_max_workspace': '1',
+                        'do_copy_in_default_stream': '1',
+                    }),
+                    ('CPUExecutionProvider', {})
+                ]
+                self.logger.info("Using CUDA acceleration")
+                
+            elif 'CoreMLExecutionProvider' in available_providers:
+                # Apple Silicon optimization
+                providers = [
+                    ('CoreMLExecutionProvider', {
+                        'device_type': 'CPU',
+                        'precision': 'FP16',
+                    }),
+                    ('CPUExecutionProvider', {})
+                ]
+                self.logger.info("Using CoreML acceleration")
+                
+            else:
+                # CPU fallback
+                providers = [('CPUExecutionProvider', {})]
+                self.logger.info("Using CPU fallback")
+            
+            # Initialize InsightFace
             self.app = FaceAnalysis(name='buffalo_l')
+            self.app.prepare(ctx_id=-1, det_size=(640, 640))
             
-            # Force CoreML context - this is the key change
-            self.app.prepare(ctx_id=-1, det_size=(640, 640))  # Use CPU context, CoreML handles GPU
-            
-            # Verify CoreML is being used
-            self.logger.info("InsightFace initialized with CoreML optimization")
-            self.logger.info("Note: CoreML will automatically use Apple Neural Engine/GPU")
             self.initialized = True
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize InsightFace with CoreML: {e}")
-            # Fallback to regular initialization
-            self._initialize_insightface_fallback()
+            self.logger.error(f"Failed to initialize InsightFace: {e}")
             raise
-
+    
     def _initialize_insightface_fallback(self):
         """Fallback initialization without CoreML"""
         try:

@@ -371,29 +371,45 @@ def _initialize_camera():
             logger.info(f"Attempting to connect to IP camera: {ip_camera_url}")
             camera = cv2.VideoCapture(ip_camera_url)
             
-            if camera.isOpened():
+            # Try to read a frame to test the connection
+            ret, test_frame = camera.read()
+            if camera.isOpened() and ret:
                 logger.info("Connected to IP camera successfully")
+                # Set camera properties for IP camera
+                camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                camera.set(cv2.CAP_PROP_FPS, 15)
+                camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             else:
                 logger.warning("Failed to connect to IP camera, falling back to local camera")
                 camera_mode = "local"
                 camera = cv2.VideoCapture(0)
+                # Set camera properties for local camera
+                camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                camera.set(cv2.CAP_PROP_FPS, 15)
+                camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         except Exception as e:
             logger.warning(f"Error connecting to IP camera: {e}, falling back to local camera")
             camera_mode = "local"
             camera = cv2.VideoCapture(0)
+            # Set camera properties for local camera
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            camera.set(cv2.CAP_PROP_FPS, 15)
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     else:
         logger.info("Using local camera")
         camera = cv2.VideoCapture(0)
-    
-    # Set camera properties
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    camera.set(cv2.CAP_PROP_FPS, 15)
-    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        # Set camera properties for local camera
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        camera.set(cv2.CAP_PROP_FPS, 15)
+        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     
     return camera
 
-def switch_camera():
+def switch_camera(target_mode=None):
     """Switch between local and IP camera"""
     global camera, camera_mode, detection_active
     
@@ -401,13 +417,26 @@ def switch_camera():
         logger.warning("Cannot switch camera while detection is active")
         return False
     
+    # Determine target mode
+    if target_mode is None:
+        target_mode = "ip" if camera_mode == "local" else "local"
+    
+    if target_mode not in ["local", "ip"]:
+        logger.error(f"Invalid camera mode: {target_mode}")
+        return False
+    
+    # Only switch if the mode is different
+    if target_mode == camera_mode:
+        logger.info(f"Already using {camera_mode} camera")
+        return True
+    
     # Release current camera
     if camera is not None:
         camera.release()
         camera = None
     
     # Switch mode
-    camera_mode = "ip" if camera_mode == "local" else "local"
+    camera_mode = target_mode
     
     # Initialize new camera
     camera = _initialize_camera()
@@ -1707,7 +1736,7 @@ def debug_cache(class_name):
 @app.route('/api/camera/status')
 def get_camera_status():
     """Get current camera status"""
-    global camera_mode, camera
+    global camera_mode, camera, ip_camera_url
     
     status = {
         'mode': camera_mode,
@@ -1720,19 +1749,49 @@ def get_camera_status():
 @app.route('/api/camera/switch', methods=['POST'])
 def switch_camera_endpoint():
     """Switch camera mode"""
+    global camera_mode, detection_active
+    
     try:
-        success = switch_camera()
-        if success:
-            return jsonify({
-                'success': True,
-                'message': f'Switched to {camera_mode} camera',
-                'mode': camera_mode
-            })
-        else:
+        if detection_active:
             return jsonify({
                 'success': False,
                 'message': 'Cannot switch camera while detection is active'
             }), 400
+        
+        data = request.get_json()
+        target_mode = data.get('mode') if data else None
+        
+        # If no specific mode requested, toggle between local and ip
+        if not target_mode:
+            target_mode = "ip" if camera_mode == "local" else "local"
+        
+        if target_mode not in ["local", "ip"]:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid camera mode. Must be "local" or "ip"'
+            }), 400
+        
+        # Only switch if the mode is different
+        if target_mode != camera_mode:
+            success = switch_camera(target_mode)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': f'Switched to {camera_mode} camera',
+                    'mode': camera_mode
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to switch camera'
+                }), 500
+        else:
+            return jsonify({
+                'success': True,
+                'message': f'Already using {camera_mode} camera',
+                'mode': camera_mode
+            })
+            
     except Exception as e:
         logger.error(f"Error switching camera: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1749,6 +1808,10 @@ def set_ip_camera_url():
         if not new_url:
             return jsonify({'error': 'IP URL is required'}), 400
         
+        # Validate URL format
+        if not new_url.startswith(('http://', 'https://')):
+            return jsonify({'error': 'Invalid URL format. Must start with http:// or https://'}), 400
+        
         ip_camera_url = new_url
         logger.info(f"Updated IP camera URL to: {ip_camera_url}")
         
@@ -1760,6 +1823,46 @@ def set_ip_camera_url():
     except Exception as e:
         logger.error(f"Error setting IP camera URL: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/camera/test-ip', methods=['POST'])
+def test_ip_camera():
+    """Test IP camera connection"""
+    try:
+        data = request.get_json()
+        test_url = data.get('ip_url')
+        
+        if not test_url:
+            return jsonify({'error': 'IP URL is required'}), 400
+        
+        # Validate URL format
+        if not test_url.startswith(('http://', 'https://')):
+            return jsonify({'error': 'Invalid URL format. Must start with http:// or https://'}), 400
+        
+        logger.info(f"Testing IP camera connection: {test_url}")
+        
+        # Try to connect to the IP camera
+        test_camera = cv2.VideoCapture(test_url)
+        
+        if not test_camera.isOpened():
+            return jsonify({'error': 'Failed to open IP camera connection'}), 400
+        
+        # Try to read a frame
+        ret, frame = test_camera.read()
+        test_camera.release()
+        
+        if not ret or frame is None:
+            return jsonify({'error': 'Failed to read frame from IP camera'}), 400
+        
+        logger.info("IP camera test successful")
+        return jsonify({
+            'success': True,
+            'message': 'IP camera connection test successful',
+            'frame_size': f"{frame.shape[1]}x{frame.shape[0]}" if frame is not None else "Unknown"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error testing IP camera: {e}")
+        return jsonify({'error': f'Connection test failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Initialize systems

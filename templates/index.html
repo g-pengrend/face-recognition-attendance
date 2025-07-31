@@ -1080,6 +1080,19 @@
                         <button class="btn btn-primary" onclick="setIpCameraUrl()">
                             <i class="fas fa-save"></i> Save
                         </button>
+                        <button class="btn btn-outline-secondary" onclick="testIpCamera()">
+                            <i class="fas fa-wifi"></i> Test
+                        </button>
+                    </div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <strong>Common IP Camera Apps:</strong><br>
+                            • <strong>IP Webcam (Android):</strong> http://[PHONE_IP]:8080/video<br>
+                            • <strong>DroidCam:</strong> http://[PHONE_IP]:4747/video<br>
+                            • <strong>EpocCam:</strong> http://[PHONE_IP]:8080/video<br>
+                            • <strong>ManyCam:</strong> http://[PHONE_IP]:8080/video<br>
+                            <em>Replace [PHONE_IP] with your phone's IP address (e.g., 192.168.1.100)</em>
+                        </small>
                     </div>
                 </div>
             </div>
@@ -3085,8 +3098,8 @@
 
         // Camera toggle functions
         function switchCamera(mode) {
-            if (detectionActive) {
-                showAlert('Cannot switch camera while detection is active', 'warning');
+            if (isDetectionActive) {
+                showAlert('warning', 'Cannot switch camera while detection is active');
                 return;
             }
             
@@ -3094,25 +3107,27 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({ mode: mode })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     currentCameraMode = data.mode;
                     updateCameraUI();
-                    showAlert(`Switched to ${data.mode} camera`, 'success');
+                    showAlert('success', `Switched to ${data.mode} camera`);
                     // Refresh video feed
+                    const videoFeed = document.getElementById('videoFeed');
                     if (videoFeed) {
                         videoFeed.src = '/video_feed?' + new Date().getTime();
                     }
                 } else {
-                    showAlert(data.message, 'warning');
+                    showAlert('warning', data.message);
                 }
             })
             .catch(error => {
                 console.error('Error switching camera:', error);
-                showAlert('Error switching camera', 'error');
+                showAlert('danger', 'Error switching camera');
             });
         }
 
@@ -3129,14 +3144,14 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showAlert('IP camera URL updated', 'success');
+                    showAlert('success', 'IP camera URL updated');
                 } else {
-                    showAlert(data.error, 'error');
+                    showAlert('danger', data.error);
                 }
             })
             .catch(error => {
                 console.error('Error setting IP camera URL:', error);
-                showAlert('Error updating IP camera URL', 'error');
+                showAlert('danger', 'Error updating IP camera URL');
             });
         }
 
@@ -3173,6 +3188,40 @@
             })
             .catch(error => {
                 console.error('Error getting camera status:', error);
+            });
+        }
+
+        // Test IP camera connection
+        function testIpCamera() {
+            const url = document.getElementById('ipCameraUrl').value;
+            const testBtn = event.target;
+            const originalText = testBtn.innerHTML;
+            
+            testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            testBtn.disabled = true;
+            
+            fetch('/api/camera/test-ip', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ip_url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'IP camera connection successful!');
+                } else {
+                    showAlert('danger', data.error || 'Failed to connect to IP camera');
+                }
+            })
+            .catch(error => {
+                console.error('Error testing IP camera:', error);
+                showAlert('danger', 'Error testing IP camera connection');
+            })
+            .finally(() => {
+                testBtn.innerHTML = originalText;
+                testBtn.disabled = false;
             });
         }
 
