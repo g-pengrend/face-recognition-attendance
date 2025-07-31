@@ -13,13 +13,16 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
+        /* Replace the existing .main-container styles */
         .main-container {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             backdrop-filter: blur(10px);
             margin: 20px auto;
-            max-width: 1400px;
+            max-width: 95vw;
+            width: 95vw;
+            min-width: 320px; /* Minimum width for mobile */
         }
         
         .header {
@@ -48,7 +51,7 @@
             text-shadow: 0 1px 4px rgba(0,0,0,0.07);
         }
         
-        /* Add custom styling for class selector */
+        /* Update class selector for better responsiveness */
         .class-select-container {
             background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
             border-radius: 16px;
@@ -59,11 +62,13 @@
             gap: 18px;
             margin-bottom: 18px;
             justify-content: center;
-            max-width: 480px;
+            max-width: 600px;
+            width: 90%;
             margin-left: auto;
             margin-right: auto;
             margin-top: 18px;
             margin-bottom: 18px;
+            flex-wrap: wrap; /* Allow wrapping on small screens */
         }
 
         .class-label {
@@ -142,13 +147,15 @@
             border-radius: 10px;
             overflow: hidden;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 100%;
         }
         
         .video-feed {
             width: 100%;
             height: auto;
-            max-height: 70vh; /* 70% of viewport height */
-            min-height: 400px; /* Minimum height */
+            max-height: 70vh;
+            min-height: 400px;
             object-fit: cover;
         }
         
@@ -167,6 +174,7 @@
             letter-spacing: 0.5px;
             transition: all 0.3s ease;
             font-size: 0.8rem;
+            white-space: nowrap;
         }
         
         .btn-start {
@@ -338,7 +346,8 @@
         /* Toast notification styles */
         .attendance-toast {
             min-width: 120px;
-            max-width: 60vw;
+            max-width: 80vw;
+            width: auto;
             background: linear-gradient(135deg, #28a745 60%, #20c997 100%);
             color: white;
             padding: 14px 24px;
@@ -371,7 +380,7 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             display: inline-block;
-            max-width: 40vw;
+            max-width: 60vw;
         }
         #statusText {
             font-size: 1.08rem;
@@ -525,6 +534,298 @@
             font-size: 0.9rem;
             opacity: 0.7;
             margin-top: 10px;
+        }
+
+        /* Enhanced responsive breakpoints */
+        @media (max-width: 576px) {
+            /* Mobile phones */
+            .main-container {
+                max-width: 98vw;
+                width: 98vw;
+                margin: 10px auto;
+                border-radius: 15px;
+            }
+            
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .header p {
+                font-size: 1rem;
+            }
+            
+            .class-select-container {
+                flex-direction: column;
+                gap: 10px;
+                padding: 15px 20px;
+                width: 95%;
+            }
+            
+            .class-selector {
+                min-width: 200px;
+                width: 100%;
+            }
+            
+            .attendance-toast {
+                max-width: 90vw;
+                font-size: 1rem;
+                padding: 12px 20px;
+            }
+            
+            #attendanceToastText {
+                max-width: 70vw;
+            }
+            
+            .video-feed {
+                max-height: 50vh;
+                min-height: 300px;
+            }
+        }
+
+        @media (min-width: 577px) and (max-width: 768px) {
+            /* Tablets */
+            .main-container {
+                max-width: 96vw;
+                width: 96vw;
+            }
+            
+            .class-select-container {
+                max-width: 500px;
+                width: 85%;
+            }
+            
+            .attendance-toast {
+                max-width: 85vw;
+            }
+            
+            #attendanceToastText {
+                max-width: 65vw;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1024px) {
+            /* Small laptops */
+            .main-container {
+                max-width: 95vw;
+                width: 95vw;
+            }
+            
+            .class-select-container {
+                max-width: 550px;
+                width: 80%;
+            }
+            
+            .attendance-toast {
+                max-width: 80vw;
+            }
+            
+            #attendanceToastText {
+                max-width: 60vw;
+            }
+        }
+
+        @media (min-width: 1025px) and (max-width: 1440px) {
+            /* Large laptops */
+            .main-container {
+                max-width: 94vw;
+                width: 94vw;
+            }
+            
+            .class-select-container {
+                max-width: 600px;
+                width: 70%;
+            }
+            
+            .attendance-toast {
+                max-width: 75vw;
+            }
+            
+            #attendanceToastText {
+                max-width: 55vw;
+            }
+        }
+
+        @media (min-width: 1441px) {
+            /* Desktop monitors */
+            .main-container {
+                max-width: 98vw;
+                width: 98vw;
+            }
+            
+            .class-select-container {
+                max-width: 700px;
+                width: 60%;
+            }
+            
+            .attendance-toast {
+                max-width: 70vw;
+            }
+            
+            #attendanceToastText {
+                max-width: 50vw;
+            }
+        }
+
+        @media (min-width: 1920px) {
+            /* 4K and ultra-wide monitors */
+            .main-container {
+                max-width: 99vw;
+                width: 99vw;
+            }
+            
+            .class-select-container {
+                max-width: 800px;
+                width: 50%;
+            }
+            
+            .attendance-toast {
+                max-width: 65vw;
+            }
+            
+            #attendanceToastText {
+                max-width: 45vw;
+            }
+        }
+
+        /* Improve content layout responsiveness */
+        .container-fluid {
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+
+        @media (min-width: 768px) {
+            .container-fluid {
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .container-fluid {
+                padding-left: 30px;
+                padding-right: 30px;
+            }
+        }
+
+        /* Better grid system for different screen sizes */
+        .row {
+            margin-left: -8px;
+            margin-right: -8px;
+        }
+
+        @media (min-width: 768px) {
+            .row {
+                margin-left: -10px;
+                margin-right: -10px;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .row {
+                margin-left: -15px;
+                margin-right: -15px;
+            }
+        }
+
+        .col, .col-md-6, .col-lg-4, .col-xl-3 {
+            padding-left: 8px;
+            padding-right: 8px;
+        }
+
+        @media (min-width: 768px) {
+            .col, .col-md-6, .col-lg-4, .col-xl-3 {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .col, .col-md-6, .col-lg-4, .col-xl-3 {
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+        }
+
+        /* Improve video container responsiveness */
+        .video-container {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .video-feed {
+            width: 100%;
+            height: auto;
+            max-height: 70vh;
+            min-height: 400px;
+            object-fit: cover;
+        }
+
+        @media (max-width: 768px) {
+            .video-feed {
+                max-height: 60vh;
+                min-height: 350px;
+            }
+        }
+
+        @media (min-width: 1440px) {
+            .video-feed {
+                max-height: 75vh;
+                min-height: 500px;
+            }
+        }
+
+        /* Improve button responsiveness */
+        .btn-custom {
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 576px) {
+            .btn-custom {
+                padding: 10px 16px;
+                font-size: 0.75rem;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .btn-custom {
+                padding: 10px 24px;
+                font-size: 0.85rem;
+            }
+        }
+
+        /* Improve card responsiveness */
+        .attendance-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        @media (max-width: 576px) {
+            .attendance-card {
+                padding: 12px;
+                margin: 8px 0;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .attendance-card {
+                padding: 20px;
+                margin: 15px 0;
+            }
         }
     </style>
 </head>
