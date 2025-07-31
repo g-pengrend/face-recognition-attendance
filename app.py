@@ -194,14 +194,25 @@ def is_cache_valid(class_name, cache_type):
     metadata = load_cache_metadata()
     cache_key = get_cache_key(class_name, cache_type)
     
+    logger.info(f"Checking cache validity for {cache_key}")
+    logger.info(f"Available cache keys: {list(metadata.keys())}")
+    
     if cache_key not in metadata:
+        logger.info(f"Cache key {cache_key} not found in metadata")
         return False
     
     cache_info = metadata[cache_key]
     folder_path = os.path.join("students", class_name)
     current_hash = get_folder_hash(folder_path)
+    stored_hash = cache_info.get('hash')
     
-    return cache_info.get('hash') == current_hash
+    logger.info(f"Current hash: {current_hash}")
+    logger.info(f"Stored hash: {stored_hash}")
+    
+    is_valid = cache_info.get('hash') == current_hash
+    logger.info(f"Cache valid: {is_valid}")
+    
+    return is_valid
 
 def save_to_cache(class_name, cache_type, data):
     """Save data to cache with improved error handling and performance monitoring"""
@@ -236,22 +247,27 @@ def save_to_cache(class_name, cache_type, data):
         logger.error(f"Error saving cache for {class_name}: {e}")
 
 def load_from_cache(class_name, cache_type):
-    """Load data from cache"""
+    """Load data from cache with debugging"""
     global cache_hits, cache_misses
+    
+    logger.info(f"Attempting to load cache for {class_name}::{cache_type}")
     
     if not is_cache_valid(class_name, cache_type):
         cache_misses += 1
+        logger.info(f"Cache invalid for {class_name}::{cache_type}")
         return None
     
     cache_key = get_cache_key(class_name, cache_type)
     cache_filename = get_cache_filename(class_name, cache_type)
     cache_file = os.path.join(cache_dir, cache_filename)
     
+    logger.info(f"Loading from cache file: {cache_file}")
+    
     try:
         with open(cache_file, 'rb') as f:
             data = pickle.load(f)
         cache_hits += 1
-        logger.info(f"Loaded {cache_type} data from cache for class {class_name}")
+        logger.info(f"Successfully loaded {cache_type} data from cache for class {class_name}")
         return data
     except Exception as e:
         cache_misses += 1
@@ -1547,22 +1563,27 @@ def get_cache_performance():
 
 # Update the load_from_cache function
 def load_from_cache(class_name, cache_type):
-    """Load data from cache"""
+    """Load data from cache with debugging"""
     global cache_hits, cache_misses
+    
+    logger.info(f"Attempting to load cache for {class_name}::{cache_type}")
     
     if not is_cache_valid(class_name, cache_type):
         cache_misses += 1
+        logger.info(f"Cache invalid for {class_name}::{cache_type}")
         return None
     
     cache_key = get_cache_key(class_name, cache_type)
     cache_filename = get_cache_filename(class_name, cache_type)
     cache_file = os.path.join(cache_dir, cache_filename)
     
+    logger.info(f"Loading from cache file: {cache_file}")
+    
     try:
         with open(cache_file, 'rb') as f:
             data = pickle.load(f)
         cache_hits += 1
-        logger.info(f"Loaded {cache_type} data from cache for class {class_name}")
+        logger.info(f"Successfully loaded {cache_type} data from cache for class {class_name}")
         return data
     except Exception as e:
         cache_misses += 1
@@ -1582,6 +1603,45 @@ def cache_performance():
     except Exception as e:
         logger.error(f"Error getting cache performance: {e}")
         return jsonify({'error': f'Error getting cache performance: {str(e)}'}), 500
+
+@app.route('/api/cache/debug/<class_name>')
+def debug_cache(class_name):
+    """Debug cache for a specific class"""
+    try:
+        metadata = load_cache_metadata()
+        cache_key = get_cache_key(class_name, "students")
+        cache_filename = get_cache_filename(class_name, "students")
+        cache_file = os.path.join(cache_dir, cache_filename)
+        folder_path = os.path.join("students", class_name)
+        
+        debug_info = {
+            'class_name': class_name,
+            'cache_key': cache_key,
+            'cache_filename': cache_filename,
+            'cache_file_exists': os.path.exists(cache_file),
+            'folder_exists': os.path.exists(folder_path),
+            'metadata_keys': list(metadata.keys()),
+            'cache_in_metadata': cache_key in metadata,
+        }
+        
+        if cache_key in metadata:
+            cache_info = metadata[cache_key]
+            debug_info.update({
+                'stored_hash': cache_info.get('hash'),
+                'timestamp': cache_info.get('timestamp'),
+                'cache_file_path': cache_info.get('cache_file')
+            })
+        
+        current_hash = get_folder_hash(folder_path)
+        debug_info['current_hash'] = current_hash
+        
+        is_valid = is_cache_valid(class_name, "students")
+        debug_info['cache_valid'] = is_valid
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize systems
