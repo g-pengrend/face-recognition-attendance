@@ -359,7 +359,7 @@ def get_camera():
     
     if camera is None:
         if camera_mode == "ip":
-            # For IP mode, try to initialize if we have a valid URL
+            # For IP mode, only try to initialize if we have a valid URL that's not the default
             if ip_camera_url and ip_camera_url != "http://192.168.1.100:8080/video":
                 camera = _initialize_camera()
             else:
@@ -462,6 +462,24 @@ def detection_loop():
     global last_face_detection_time, is_idle, is_standby, idle_overlay_active, detection_cycle_time
     global consecutive_no_faces_count, detection_state, last_standby_check_time
     
+    # Don't start detection if we're in IP mode but camera isn't configured
+    if camera_mode == "ip":
+        logger.info("IP camera mode selected - waiting for configuration")
+        detection_state = "waiting_for_config"
+        
+        # Wait for IP camera to be configured
+        while detection_active and camera_mode == "ip":
+            camera = get_camera()
+            if camera is not None and camera.isOpened():
+                logger.info("IP camera configured - starting detection")
+                break
+            time.sleep(1.0)  # Check every second
+        
+        if not detection_active:
+            logger.info("Detection stopped while waiting for IP camera configuration")
+            return
+    
+    # Now get the camera (should be configured by now)
     camera = get_camera()
     if not camera.isOpened():
         logger.error("Failed to open camera")
@@ -1044,6 +1062,21 @@ def video_feed():
         global current_frame
         
         camera = get_camera()
+        if camera is None:
+            # If camera is None (IP mode not configured), return a blank frame or error
+            logger.warning("Camera not available - IP camera may need configuration")
+            # Create a blank frame with text
+            blank_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(blank_frame, "Camera not configured", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(blank_frame, "Please configure IP camera", (50, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            
+            ret, buffer = cv2.imencode('.jpg', blank_frame)
+            if ret:
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            return
+        
         if not camera.isOpened():
             logger.error("Failed to open camera for streaming")
             return
@@ -1741,13 +1774,14 @@ def debug_cache(class_name):
 @app.route('/api/camera/status')
 def get_camera_status():
     """Get current camera status"""
-    global camera_mode, camera, ip_camera_url
+    global camera_mode, camera, ip_camera_url, detection_state
     
     status = {
         'mode': camera_mode,
         'connected': camera is not None and camera.isOpened() if camera else False,
         'ip_url': ip_camera_url if camera_mode == "ip" else None,
-        'needs_configuration': camera_mode == "ip" and (camera is None or not camera.isOpened())
+        'needs_configuration': camera_mode == "ip" and (camera is None or not camera.isOpened()),
+        'detection_state': detection_state
     }
     
     return jsonify(status)
@@ -1812,8 +1846,8 @@ def switch_camera_endpoint():
 
 @app.route('/api/camera/set-ip', methods=['POST'])
 def set_ip_camera_url():
-    """Set IP camera URL"""
-    global ip_camera_url
+    """Set IP camera URL and test connection"""
+    global ip_camera_url, camera
     
     try:
         data = request.get_json()
@@ -1826,17 +1860,59 @@ def set_ip_camera_url():
         if not new_url.startswith(('http://', 'https://')):
             return jsonify({'error': 'Invalid URL format. Must start with http:// or https://'}), 400
         
+        # Update the IP camera URL
         ip_camera_url = new_url
         logger.info(f"Updated IP camera URL to: {ip_camera_url}")
         
+        # Release any existing camera connection
+        if camera is not None:
+            camera.release()
+            camera = None
+        
+        # Test the new IP camera connection
+        test_camera = cv2.VideoCapture(ip_camera_url)
+        
+        if not test_camera.isOpened():
+            test_camera.release()
+            return jsonify({
+                'success': False,
+                'message': 'Failed to connect to IP camera. Please check the URL and try again.',
+                'ip_url': ip_camera_url
+            }), 400
+        
+        # Try to read a frame to verify connection
+        ret, frame = test_camera.read()
+        test_camera.release()
+        
+        if not ret or frame is None:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to read frame from IP camera. Please check the connection.',
+                'ip_url': ip_camera_url
+            }), 400
+        
+        # If we get here, the connection is successful
+        # Initialize the actual camera with the new URL
+        camera = _initialize_camera()
+        
+        if camera is None or not camera.isOpened():
+            return jsonify({
+                'success': False,
+                'message': 'Failed to initialize IP camera after successful test.',
+                'ip_url': ip_camera_url
+            }), 500
+        
+        logger.info("IP camera connection test successful and camera initialized")
         return jsonify({
             'success': True,
-            'message': f'IP camera URL updated to {ip_camera_url}',
-            'ip_url': ip_camera_url
+            'message': f'IP camera connected successfully! URL: {ip_camera_url}',
+            'ip_url': ip_camera_url,
+            'frame_size': f"{frame.shape[1]}x{frame.shape[0]}" if frame is not None else "Unknown"
         })
+        
     except Exception as e:
         logger.error(f"Error setting IP camera URL: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Connection test failed: {str(e)}'}), 500
 
 @app.route('/api/camera/test-ip', methods=['POST'])
 def test_ip_camera():
