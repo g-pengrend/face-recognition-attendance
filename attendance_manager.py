@@ -381,12 +381,11 @@ class AttendanceManager:
             with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 
-                # Write header with reordered columns
+                # Write header with student status column
                 writer.writerow([
                     'Student Name',
                     'Status',
                     'Minutes Late',
-                    'Lateness Category',
                     'First Seen',
                     'Last Seen',
                     'Confidence',
@@ -427,19 +426,36 @@ class AttendanceManager:
                         data = summary['attendance'][student_name]
                         duration = self._calculate_duration(data['first_seen'], data['last_seen'])
                         
-                        # Get lateness information
+                        # Get lateness information and combine with status
                         minutes_late = 0
-                        lateness_category = "Unknown"
+                        student_status = "Present - On Time"
                         
                         if 'lateness' in data:
                             minutes_late = data['lateness'].get('minutes_late', 0)
                             lateness_category = data['lateness'].get('category', 'Unknown')
+                            
+                            # Combine status and lateness category
+                            if lateness_category == "On Time":
+                                student_status = "Present - On Time"
+                            elif lateness_category == "30 min late":
+                                student_status = "Present - 30 min late"
+                            elif lateness_category == "1 hour late":
+                                student_status = "Present - 1 hour late"
+                            elif lateness_category == "90 min late":
+                                student_status = "Present - 90 min late"
+                            elif lateness_category == "2 hours late":
+                                student_status = "Present - 2 hours late"
+                            elif lateness_category == "2.5 hours late":
+                                student_status = "Present - 2.5 hours late"
+                            elif lateness_category == "3 hours late":
+                                student_status = "Present - 3 hours late"
+                            else:
+                                student_status = f"Present - {lateness_category}"
                         
                         writer.writerow([
                             student_name,
-                            'Present',
+                            student_status,
                             f"{minutes_late:.1f}",
-                            lateness_category,
                             data['first_seen'],
                             data['last_seen'],
                             f"{data['confidence']:.3f}",
@@ -452,12 +468,11 @@ class AttendanceManager:
                             student_name,
                             'Absent',
                             '',
-                            'Absent',
                             '',
                             '',
                             '',
                             '',
-                            ''
+                            '',
                         ])
                 
                 # Write summary
@@ -470,15 +485,19 @@ class AttendanceManager:
                 writer.writerow(['Duration (minutes)', summary['duration_minutes']])
                 writer.writerow(['Total Students', len(sorted_students)])
                 writer.writerow(['Present Students', summary['present_students']])
-                writer.writerow(['Absent Students', len(sorted_students) - summary['present_students']])
+                # Fix Absent Students count in summary
+                absent_count = len(sorted_students) - summary['present_students']
+                writer.writerow(['Absent Students', absent_count])
                 writer.writerow(['Attendance Rate', f"{summary['present_students'] / len(sorted_students):.2%}" if len(sorted_students) > 0 else "0.00%"])
                 writer.writerow(['Total Detections', summary['total_detections']])
                 
-                # Write lateness statistics
+                # Write lateness statistics (fix Absent count here too)
                 if 'lateness_stats' in summary:
+                    lateness_stats = summary['lateness_stats'].copy()
+                    lateness_stats['Absent'] = absent_count  # Ensure correct absent count
                     writer.writerow([])
                     writer.writerow(['Lateness Statistics'])
-                    for category, count in summary['lateness_stats'].items():
+                    for category, count in lateness_stats.items():
                         writer.writerow([category, count])
             
             self.logger.info(f"Exported attendance data to {output_path}")
