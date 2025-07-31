@@ -17,6 +17,7 @@ class AttendanceManager:
         self.logs_folder = logs_folder
         self.current_session = None
         self.attendance_data = {}
+        self.face_system = None  # Reference to face system for getting student list
         
         # Setup logging
         logging.basicConfig(level=logging.INFO)
@@ -237,12 +238,21 @@ class AttendanceManager:
                 student_data['lateness'] = lateness_info
             attendance_with_lateness[student_name] = student_data
         
+        # Get all students list for complete attendance tracking
+        all_students = []
+        try:
+            if self.face_system:
+                all_students = self.face_system.get_students_list()
+        except Exception as e:
+            self.logger.warning(f"Could not get student list for current attendance: {e}")
+        
         return {
             'session_id': self.current_session['session_id'],
             'start_time': self.current_session['start_time'],
             'session_start_time': session_start_time,
             'present_students': self.current_session['present_students'],
-            'attendance': attendance_with_lateness
+            'attendance': attendance_with_lateness,
+            'all_students': all_students
         }
     
     def get_session_summary(self, session_id: str) -> Optional[Dict]:
@@ -279,6 +289,14 @@ class AttendanceManager:
             # Calculate lateness statistics
             lateness_stats = self._calculate_lateness_statistics(session_data)
             
+            # Get all students list for complete attendance tracking
+            all_students = []
+            try:
+                if self.face_system:
+                    all_students = self.face_system.get_students_list()
+            except Exception as e:
+                self.logger.warning(f"Could not get student list for session summary: {e}")
+            
             summary = {
                 'session_id': session_data['session_id'],
                 'start_time': session_data['start_time'],
@@ -290,7 +308,8 @@ class AttendanceManager:
                 'attendance_rate': attendance_count / session_data['total_students'] if session_data['total_students'] > 0 else 0,
                 'total_detections': total_detections,
                 'attendance': session_data['attendance'],
-                'lateness_stats': lateness_stats
+                'lateness_stats': lateness_stats,
+                'all_students': all_students
             }
             
             return summary
@@ -342,7 +361,7 @@ class AttendanceManager:
     
     def export_to_csv(self, session_id: str, output_path: Optional[str] = None) -> Optional[str]:
         """
-        Export attendance data to CSV with lateness information, sorted by student prefix number
+        Export attendance data to CSV with lateness information, including absent students
         
         Args:
             session_id (str): Session ID to export
@@ -365,6 +384,7 @@ class AttendanceManager:
                 # Write header with reordered columns
                 writer.writerow([
                     'Student Name',
+                    'Status',
                     'Minutes Late',
                     'Lateness Category',
                     'First Seen',
@@ -373,6 +393,20 @@ class AttendanceManager:
                     'Detection Count',
                     'Duration (minutes)'
                 ])
+                
+                # Get all students list from face system if available
+                all_students = []
+                try:
+                    # Try to get students from the current face system
+                    if self.face_system:
+                        all_students = self.face_system.get_students_list()
+                    else:
+                        # Fallback: try to get from session data if available
+                        all_students = summary.get('all_students', [])
+                except Exception as e:
+                    self.logger.warning(f"Could not get full student list: {e}")
+                    # If we can't get the full list, just use present students
+                    all_students = list(summary['attendance'].keys())
                 
                 # Sort students by prefix number (00_, 01_, 02_, etc.)
                 def extract_student_number(student_name):
@@ -383,34 +417,48 @@ class AttendanceManager:
                         return int(match.group(1))
                     return float('inf')  # Put non-prefixed names at the end
                 
-                # Sort attendance data by student number
-                sorted_attendance = sorted(
-                    summary['attendance'].items(),
-                    key=lambda x: extract_student_number(x[0])
-                )
+                # Sort all students by student number
+                sorted_students = sorted(all_students, key=extract_student_number)
                 
-                # Write attendance data in sorted order with reordered columns
-                for student_name, data in sorted_attendance:
-                    duration = self._calculate_duration(data['first_seen'], data['last_seen'])
-                    
-                    # Get lateness information
-                    minutes_late = 0
-                    lateness_category = "Unknown"
-                    
-                    if 'lateness' in data:
-                        minutes_late = data['lateness'].get('minutes_late', 0)
-                        lateness_category = data['lateness'].get('category', 'Unknown')
-                    
-                    writer.writerow([
-                        student_name,
-                        f"{minutes_late:.1f}",
-                        lateness_category,
-                        data['first_seen'],
-                        data['last_seen'],
-                        f"{data['confidence']:.3f}",
-                        data['detection_count'],
-                        f"{duration:.1f}"
-                    ])
+                # Write attendance data for all students (present and absent)
+                for student_name in sorted_students:
+                    if student_name in summary['attendance']:
+                        # Student is present
+                        data = summary['attendance'][student_name]
+                        duration = self._calculate_duration(data['first_seen'], data['last_seen'])
+                        
+                        # Get lateness information
+                        minutes_late = 0
+                        lateness_category = "Unknown"
+                        
+                        if 'lateness' in data:
+                            minutes_late = data['lateness'].get('minutes_late', 0)
+                            lateness_category = data['lateness'].get('category', 'Unknown')
+                        
+                        writer.writerow([
+                            student_name,
+                            'Present',
+                            f"{minutes_late:.1f}",
+                            lateness_category,
+                            data['first_seen'],
+                            data['last_seen'],
+                            f"{data['confidence']:.3f}",
+                            data['detection_count'],
+                            f"{duration:.1f}"
+                        ])
+                    else:
+                        # Student is absent
+                        writer.writerow([
+                            student_name,
+                            'Absent',
+                            '',
+                            'Absent',
+                            '',
+                            '',
+                            '',
+                            '',
+                            ''
+                        ])
                 
                 # Write summary
                 writer.writerow([])
@@ -420,9 +468,10 @@ class AttendanceManager:
                 writer.writerow(['Class Start Time', summary['session_start_time']])
                 writer.writerow(['End Time', summary['end_time']])
                 writer.writerow(['Duration (minutes)', summary['duration_minutes']])
-                writer.writerow(['Total Students', summary['total_students']])
+                writer.writerow(['Total Students', len(sorted_students)])
                 writer.writerow(['Present Students', summary['present_students']])
-                writer.writerow(['Attendance Rate', f"{summary['attendance_rate']:.2%}"])
+                writer.writerow(['Absent Students', len(sorted_students) - summary['present_students']])
+                writer.writerow(['Attendance Rate', f"{summary['present_students'] / len(sorted_students):.2%}" if len(sorted_students) > 0 else "0.00%"])
                 writer.writerow(['Total Detections', summary['total_detections']])
                 
                 # Write lateness statistics
@@ -438,6 +487,16 @@ class AttendanceManager:
         except Exception as e:
             self.logger.error(f"Error exporting to CSV: {e}")
             return None
+    
+    def set_face_system(self, face_system):
+        """
+        Set reference to face system for getting student list
+        
+        Args:
+            face_system: Face recognition system instance
+        """
+        self.face_system = face_system
+        self.logger.info("Face system reference set in attendance manager")
     
     def set_total_students(self, count: int) -> bool:
         """

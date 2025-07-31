@@ -126,6 +126,10 @@ def initialize_systems():
     try:
         face_system = FaceRecognitionSystem(students_folder="students", threshold=0.6)
         attendance_manager = AttendanceManager(logs_folder="attendance_logs")
+        
+        # Set face system reference in attendance manager
+        attendance_manager.set_face_system(face_system)
+        
         logger.info("Systems initialized successfully")
         return True
     except Exception as e:
