@@ -2435,7 +2435,7 @@
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
                     
-                    // Hide ALL overlays
+                    // Hide ALL overlays immediately
                     document.getElementById('idleOverlay').style.display = 'none';
                     document.getElementById('standbyOverlay').style.display = 'none';
                     document.getElementById('standbyIndicator').style.display = 'none';
@@ -2450,6 +2450,11 @@
                     }
                     
                     showAlert('success', 'Detection resumed successfully!');
+                    
+                    // Force a status check after a short delay to ensure overlays stay hidden
+                    setTimeout(() => {
+                        checkDetectionStatus();
+                    }, 1000);
                     
                 } else {
                     throw new Error(result.error || 'Failed to resume detection');

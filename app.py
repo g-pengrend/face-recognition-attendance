@@ -51,6 +51,7 @@ detection_cycle_time = 0.1  # Default cycle time (100ms)
 standby_cycle_time = 2.0  # Slower cycle when in standby mode (2 seconds)
 standby_timeout = 10  # Seconds without faces before entering standby
 consecutive_no_faces_count = 0  # Track consecutive frames with no faces
+last_standby_check_time = time.time()  # Track when we last checked for standby
 
 class FaceSamplingManager:
     def __init__(self, batch_size=5, batch_interval=2.0):
@@ -174,7 +175,7 @@ def detection_loop():
     """Adaptive detection loop with proper state management"""
     global detection_active, face_system, attendance_manager, current_frame, current_faces
     global last_face_detection_time, is_idle, is_standby, idle_overlay_active, detection_cycle_time
-    global consecutive_no_faces_count, detection_state
+    global consecutive_no_faces_count, detection_state, last_standby_check_time
     
     camera = get_camera()
     if not camera.isOpened():
@@ -209,6 +210,7 @@ def detection_loop():
                 # Faces detected - reset counters and use normal speed
                 last_face_detection_time = current_time
                 consecutive_no_faces_count = 0
+                last_standby_check_time = current_time  # Reset standby check time
                 
                 # Exit standby mode if we were in it
                 if is_standby:
@@ -224,18 +226,18 @@ def detection_loop():
                 # No faces detected - increment counter
                 consecutive_no_faces_count += 1
                 
-                # Calculate total time without faces (in seconds)
-                total_time_without_faces = consecutive_no_faces_count * detection_cycle_time
+                # Check for standby mode using actual elapsed time
+                time_since_last_face = current_time - last_face_detection_time
                 
                 # Check for standby mode FIRST (before idle)
-                if not is_standby and total_time_without_faces >= standby_timeout:
+                if not is_standby and time_since_last_face >= standby_timeout:
                     is_standby = True
                     detection_cycle_time = standby_cycle_time
                     detection_state = "standby"
                     logger.info(f"No faces for {standby_timeout}s - entering standby mode ({standby_cycle_time}s cycle)")
                 
                 # Check for idle mode AFTER standby (only if not in standby)
-                elif not is_idle and (current_time - last_face_detection_time) > idle_timeout:
+                elif not is_idle and time_since_last_face > idle_timeout:
                     is_idle = True
                     is_standby = False  # Exit standby when going idle
                     idle_overlay_active = True
@@ -305,17 +307,18 @@ def idle_monitoring_loop():
 
 def resume_detection_from_idle():
     """Resume detection from idle state"""
-    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, consecutive_no_faces_count, detection_state
+    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, consecutive_no_faces_count, detection_state, last_standby_check_time
     
     if is_idle:
         is_idle = False
         is_standby = False
         idle_overlay_active = False
         detection_cycle_time = 0.1
-        last_face_detection_time = time.time()
+        last_face_detection_time = time.time()  # Reset the timer
         consecutive_no_faces_count = 0
+        last_standby_check_time = time.time()  # Reset standby check time
         detection_state = "active"
-        logger.info("Detection resumed from idle state")
+        logger.info("Detection resumed from idle state - all timers reset")
         
         # Restart the detection loop
         global detection_thread
