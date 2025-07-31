@@ -61,21 +61,8 @@ class FaceRecognitionSystem:
         self.current_class = class_name
         self.students_db = {}  # Clear existing students
         
-        if use_cache:
-            # Try to load from cache first
-            cached_data = self._load_from_cache(class_name)
-            if cached_data and self._is_cache_valid(class_name):
-                # Restore from cache
-                self.students_db = cached_data.get('students_db', {})
-                self.logger.info(f"Loaded class {class_name} from cache with {len(self.students_db)} students")
-                return True
-        
-        # Load from folder if no cache or cache invalid
+        # Load from folder (caching is handled externally)
         self._load_students_for_class(class_name)
-        
-        # Save to cache after loading
-        if use_cache:
-            self._save_to_cache(class_name)
         
         self.logger.info(f"Switched to class: {class_name} with {len(self.students_db)} students")
         return True
