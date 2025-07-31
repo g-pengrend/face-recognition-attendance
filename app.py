@@ -360,23 +360,21 @@ def get_status():
     return jsonify(status)
 
 @app.route('/api/detection-status')
-def get_detection_status():
-    """Get current detection status including idle and standby states"""
-    global is_idle, is_standby, idle_overlay_active, detection_cycle_time, last_face_detection_time, detection_state
+def detection_status():
+    """Get the current detection status (active, idle, standby)"""
+    global detection_active, is_idle, is_standby, idle_overlay_active, detection_state
     
-    current_time = time.time()
-    time_since_last_detection = current_time - last_face_detection_time
-    
-    return jsonify({
-        'state': detection_state,
-        'is_idle': is_idle,
-        'is_standby': is_standby,
-        'idle_overlay_active': idle_overlay_active,
-        'detection_cycle_time': detection_cycle_time,
-        'time_since_last_detection': time_since_last_detection,
-        'idle_timeout': idle_timeout,
-        'standby_timeout': standby_timeout
-    })
+    try:
+        # Use the actual global variables from your detection system
+        return jsonify({
+            'detection_active': detection_active,
+            'idle_overlay_active': idle_overlay_active,
+            'state': detection_state  # This will be 'active', 'idle', 'standby', or 'stopped'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in detection status: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # Update the attendance API to show proper state
 @app.route('/api/attendance')
@@ -731,45 +729,8 @@ def video_feed():
                         label = f"Unknown #{i+1}"
                         cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
-            # Add standby overlay if system is in standby mode
-            if is_standby:
-                height, width = frame.shape[:2]
-                
-                # Create semi-transparent overlay (lighter than idle)
-                overlay = frame.copy()
-                cv2.rectangle(overlay, (0, 0), (width, height), (0, 0, 0), -1)
-                cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
-                
-                # Add standby message
-                standby_text = "STANDBY MODE - Please stand still for detection"
-                text_size = cv2.getTextSize(standby_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
-                text_x = (width - text_size[0]) // 2
-                text_y = height // 2 - 30
-                
-                # Draw text with black outline
-                cv2.putText(frame, standby_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
-                cv2.putText(frame, standby_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 2)
-                
-                # Add instruction
-                instruction_text = "Detection will resume automatically when you are detected"
-                instruction_size = cv2.getTextSize(instruction_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-                instruction_x = (width - instruction_size[0]) // 2
-                instruction_y = text_y + 50
-                
-                cv2.putText(frame, instruction_text, (instruction_x, instruction_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
-                cv2.putText(frame, instruction_text, (instruction_x, instruction_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
-                
-                # Add cycle indicator
-                cycle_text = f"Detection cycle: {standby_cycle_time}s"
-                cycle_size = cv2.getTextSize(cycle_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
-                cycle_x = (width - cycle_size[0]) // 2
-                cycle_y = instruction_y + 40
-                
-                cv2.putText(frame, cycle_text, (cycle_x, cycle_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-                cv2.putText(frame, cycle_text, (cycle_x, cycle_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
-            
             # Add idle overlay if system is idle (keep existing idle overlay code)
-            elif is_idle and idle_overlay_active:
+            if is_idle and idle_overlay_active:
                 height, width = frame.shape[:2]
                 
                 # Create semi-transparent overlay
