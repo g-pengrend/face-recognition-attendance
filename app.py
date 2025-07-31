@@ -758,9 +758,11 @@ def set_class():
         # Try to load from cache first
         cached_students = load_from_cache(class_name, "students")
         if cached_students:
-            # Use cached data without loading from folder
-            success = face_system.set_current_class_from_cache(class_name, cached_students)
+            # Use cached data - set current class and restore students_db
+            success = face_system.set_current_class(class_name)
             if success:
+                # Restore the cached students database
+                face_system.students_db = cached_students.get('students_db', {})
                 logger.info(f"Loaded class {class_name} from cache with {len(face_system.students_db)} students")
         else:
             # Load normally and cache
