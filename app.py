@@ -525,6 +525,19 @@ def detection_loop():
                     detection_cycle_time = 0.1  # Normal speed when faces are present
                     detection_state = "active"
                     logger.debug("Faces detected - using normal detection speed")
+                
+                # Process faces immediately for faster attendance recording
+                for face in all_faces:
+                    if face['student_name'] and face['confidence'] >= 0.6:
+                        # Known face - mark attendance immediately
+                        success = attendance_manager.mark_attendance(
+                            face['student_name'], 
+                            face['confidence']
+                        )
+                        if success:
+                            logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
+                        else:
+                            logger.warning(f"Failed to mark attendance for {face['student_name']}")
             else:
                 # No faces detected - increment counter
                 consecutive_no_faces_count += 1
@@ -552,19 +565,6 @@ def detection_loop():
             # Log performance if detection is slow
             if detection_time > 100:  # More than 100ms
                 logger.warning(f"Slow face detection: {detection_time:.1f}ms for {len(all_faces)} faces")
-            
-            # Process faces immediately for faster attendance recording
-            for face in all_faces:
-                if face['student_name'] and face['confidence'] >= 0.6:
-                    # Known face - mark attendance immediately
-                    success = attendance_manager.mark_attendance(
-                        face['student_name'], 
-                        face['confidence']
-                    )
-                    if success:
-                        logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
-                    else:
-                        logger.warning(f"Failed to mark attendance for {face['student_name']}")
             
             # Calculate total loop time
             total_loop_time = (time.time() - loop_start_time) * 1000
