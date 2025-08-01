@@ -49,7 +49,7 @@ detection_state = "stopped"  # "active", "standby", "idle", "stopped"
 
 # Adaptive detection variables
 last_face_detection_time = time.time()
-idle_timeout = 30  # 30 seconds for testing
+idle_timeout = 120  # 30 seconds for testing
 is_idle = False
 is_standby = False  # New standby state
 idle_overlay_active = False
