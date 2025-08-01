@@ -1183,6 +1183,7 @@
                                     <div id="idleOverlay" class="idle-overlay">
                                         <h3><i class="fas fa-pause-circle"></i> System Idle</h3>
                                         <p>No faces detected for 5 minutes</p>
+                                        <p>Or enter idle button manually pressed</p>
                                         <button class="btn-resume" onclick="resumeDetection()">
                                             <i class="fas fa-play"></i> Resume Detection
                                         </button>
@@ -1496,6 +1497,7 @@
         let statusUpdateInterval = null;
         let attendanceUpdateInterval = null;  // Add separate interval for attendance
         let isDetectionActive = false;  // Track detection state locally
+        let detectionState = 'active'; // Add this line
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -1688,6 +1690,9 @@
                     // Start attendance updates now that detection is active
                     startAttendanceUpdates();
                     
+                    // In startDetection function, after this line: isDetectionActive = true;
+                    updateIdleButtonVisibility();
+                    
                 } else {
                     showAlert('danger', result.error || 'Failed to start detection');
                 }
@@ -1817,6 +1822,9 @@
                     updateLiveAttendanceFeed(status.current_session);
                     updateAbsentStudentsList(status.current_session);
                 }
+                
+                // In updateStatus function, add at the end:
+                updateIdleButtonVisibility();
                 
             } catch (error) {
                 console.error('Error updating status:', error);
@@ -3315,8 +3323,7 @@
                 const result = await response.json();
                 if (result.success) {
                     showAlert('info', 'System entered idle mode.');
-                    // Optionally update UI state
-                    isDetectionActive = true; // Still active, but now idle
+                    // Update local state
                     detectionState = 'idle';
                     updateIdleButtonVisibility();
                 } else {
