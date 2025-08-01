@@ -492,6 +492,11 @@ def detection_loop():
         loop_start_time = time.time()
         current_time = time.time()
         
+        # Check for manual idle mode first (before processing any frames)
+        if is_idle:
+            logger.info("Manual idle mode detected - breaking out of detection loop")
+            break
+        
         ret, frame = camera.read()
         if not ret:
             logger.warning("Failed to read frame from camera")
