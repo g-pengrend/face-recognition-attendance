@@ -1496,7 +1496,6 @@
         let statusUpdateInterval = null;
         let attendanceUpdateInterval = null;  // Add separate interval for attendance
         let isDetectionActive = false;  // Track detection state locally
-        let detectionState = 'active'; // Add this line
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -1689,8 +1688,6 @@
                     // Start attendance updates now that detection is active
                     startAttendanceUpdates();
                     
-                    // Add this line: isDetectionActive = true;
-                    updateIdleButtonVisibility();
                 } else {
                     showAlert('danger', result.error || 'Failed to start detection');
                 }
@@ -1734,8 +1731,6 @@
                     updateLiveAttendanceFeed({});
                     updateAbsentStudentsList({});
                     
-                    // Add this line: isDetectionActive = false;
-                    updateIdleButtonVisibility();
                 } else {
                     showAlert('danger', result.error || 'Failed to stop detection');
                 }
@@ -1823,8 +1818,6 @@
                     updateAbsentStudentsList(status.current_session);
                 }
                 
-                // Add this line at the end of the function:
-                updateIdleButtonVisibility();
             } catch (error) {
                 console.error('Error updating status:', error);
             }
@@ -3322,7 +3315,8 @@
                 const result = await response.json();
                 if (result.success) {
                     showAlert('info', 'System entered idle mode.');
-                    // Update local state
+                    // Optionally update UI state
+                    isDetectionActive = true; // Still active, but now idle
                     detectionState = 'idle';
                     updateIdleButtonVisibility();
                 } else {
