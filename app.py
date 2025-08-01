@@ -492,6 +492,11 @@ def detection_loop():
         loop_start_time = time.time()
         current_time = time.time()
         
+        # Check for manual idle mode first (before processing any frames)
+        if is_idle:
+            logger.info("Manual idle mode detected - breaking out of detection loop")
+            break
+        
         ret, frame = camera.read()
         if not ret:
             logger.warning("Failed to read frame from camera")
@@ -1954,16 +1959,20 @@ def test_ip_camera():
 @app.route('/api/enter-idle', methods=['POST'])
 def enter_idle():
     """Manually enter idle mode"""
-    global is_idle, is_standby, idle_overlay_active, detection_state
+    global is_idle, is_standby, idle_overlay_active, detection_state, last_face_detection_time
     
     try:
-        # Directly set the idle state variables
+        # Set the same state variables that trigger idle mode
         is_idle = True
         is_standby = False
         idle_overlay_active = True
         detection_state = 'idle'
         
-        logger.info("Manually entered idle mode - detection will stop on next cycle")
+        # Force the detection loop to break out by setting the timer to trigger idle
+        # This ensures the detection loop will exit and enter idle monitoring
+        last_face_detection_time = time.time() - (idle_timeout + 1)  # Force idle trigger
+        
+        logger.info("Manually entered idle mode via API - forcing detection loop to exit")
         return jsonify({'success': True, 'message': 'System entered idle mode'})
     except Exception as e:
         logger.error(f"Error entering idle mode: {e}")
