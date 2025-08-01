@@ -492,6 +492,11 @@ def detection_loop():
         loop_start_time = time.time()
         current_time = time.time()
         
+        # Check for manual idle mode FIRST (before processing any frames)
+        if is_idle:
+            logger.info("Manual idle mode detected - breaking out of detection loop")
+            break
+        
         ret, frame = camera.read()
         if not ret:
             logger.warning("Failed to read frame from camera")
@@ -552,14 +557,13 @@ def detection_loop():
                     detection_state = "standby"
                     logger.info(f"No faces for {standby_timeout}s - entering standby mode ({standby_cycle_time}s cycle)")
                 
-                # Check for idle mode AFTER standby (only if not in standby)
+                # Check for automatic idle mode AFTER standby (only if not in standby)
                 elif not is_idle and time_since_last_face > idle_timeout:
                     is_idle = True
                     is_standby = False  # Exit standby when going idle
                     idle_overlay_active = True
                     detection_state = "idle"
                     logger.info(f"System went idle after {idle_timeout} seconds of no face detection")
-                    # When idle, we'll break out of the detection loop
                     break
             
             # Log performance if detection is slow
