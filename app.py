@@ -581,8 +581,14 @@ def detection_loop():
     # If we're here and idle, start the idle monitoring loop
     if is_idle:
         idle_monitoring_loop()
-    
-    logger.info("Detection loop stopped")
+        # After idle monitoring loop exits, restart the main detection loop if still active
+        if detection_active and not is_idle:
+            logger.info("Restarting main detection loop after exiting idle mode")
+            detection_loop()  # Recursive call to restart the detection loop
+        else:
+            logger.info("Detection stopped after idle mode")
+    else:
+        logger.info("Detection loop stopped")
 
 def idle_monitoring_loop():
     """Separate loop that runs when system is idle - only checks for resume signal"""
@@ -607,11 +613,6 @@ def idle_monitoring_loop():
         time.sleep(2.0)
     
     logger.info("Idle monitoring loop stopped")
-    
-    # If we exit the idle loop and detection is still active, restart the main detection loop
-    if detection_active and not is_idle:
-        logger.info("Exiting idle mode - restarting main detection loop")
-        # The main detection loop will continue from where it left off
 
 def resume_detection_from_idle():
     """Resume detection from idle state"""
@@ -628,9 +629,6 @@ def resume_detection_from_idle():
         last_standby_check_time = time.time()  # Reset standby check time
         detection_state = "active"
         logger.info("Detection resumed from idle state - all timers reset")
-        
-        # The detection loop should automatically restart when the idle loop exits
-        # No need to manually restart the thread
         
         return True
     else:
