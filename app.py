@@ -607,6 +607,11 @@ def idle_monitoring_loop():
         time.sleep(2.0)
     
     logger.info("Idle monitoring loop stopped")
+    
+    # If we exit the idle loop and detection is still active, restart the main detection loop
+    if detection_active and not is_idle:
+        logger.info("Exiting idle mode - restarting main detection loop")
+        # The main detection loop will continue from where it left off
 
 def resume_detection_from_idle():
     """Resume detection from idle state"""
@@ -624,15 +629,8 @@ def resume_detection_from_idle():
         detection_state = "active"
         logger.info("Detection resumed from idle state - all timers reset")
         
-        # Restart the detection loop
-        global detection_thread
-        if detection_thread and detection_thread.is_alive():
-            # The thread will naturally exit the idle loop and restart detection
-            pass
-        else:
-            # Start a new detection thread
-            detection_thread = threading.Thread(target=detection_loop, daemon=True)
-            detection_thread.start()
+        # The detection loop should automatically restart when the idle loop exits
+        # No need to manually restart the thread
         
         return True
     else:
@@ -1414,13 +1412,14 @@ def resume_from_idle():
         # Force a small delay to ensure the detection loop picks up the changes
         time.sleep(0.1)
         
-        # Ensure detection loop is running
-        if not detection_thread or not detection_thread.is_alive():
+        # Check if detection thread is still running
+        if detection_thread and detection_thread.is_alive():
+            logger.info("Detection thread still running, resuming from idle")
+        else:
+            # If thread is not running, start a new one
             detection_thread = threading.Thread(target=detection_loop, daemon=True)
             detection_thread.start()
-            logger.info("Restarted detection loop after resuming from idle")
-        else:
-            logger.info("Detection loop already running, resuming from idle")
+            logger.info("Started new detection thread after resuming from idle")
         
         logger.info(f"Detection resumed from idle state. Current state: is_idle={is_idle}, is_standby={is_standby}, detection_state={detection_state}")
         
