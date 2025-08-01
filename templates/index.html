@@ -1149,6 +1149,10 @@
                                             <button class="btn btn-secondary ms-2" id="resumeSessionBtn" style="display:none;">
                                                 <i class="fas fa-history"></i> Resume Session
                                             </button>
+                                            <!-- Add Enter Idle Mode button here -->
+                                            <button class="btn btn-info btn-custom btn-sm ms-2" id="enterIdleBtn" style="display:none;" onclick="enterIdleMode()">
+                                                <i class="fas fa-pause"></i> Enter Idle Mode
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -3304,6 +3308,34 @@
             updateCameraStatus();
             setInterval(updateCameraStatus, 5000); // Update every 5 seconds
         });
+
+        async function enterIdleMode() {
+            try {
+                const response = await fetch('/api/enter-idle', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    showAlert('info', 'System entered idle mode.');
+                    // Optionally update UI state
+                    isDetectionActive = true; // Still active, but now idle
+                    detectionState = 'idle';
+                    updateIdleButtonVisibility();
+                } else {
+                    showAlert('danger', result.error || 'Failed to enter idle mode.');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error entering idle mode: ' + error.message);
+            }
+        }
+
+        function updateIdleButtonVisibility() {
+            const enterIdleBtn = document.getElementById('enterIdleBtn');
+            // Show only if detection is active and not idle
+            if (isDetectionActive && detectionState !== 'idle') {
+                enterIdleBtn.style.display = '';
+            } else {
+                enterIdleBtn.style.display = 'none';
+            }
+        }
     </script>
 </body>
 </html> 

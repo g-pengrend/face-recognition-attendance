@@ -1951,6 +1951,21 @@ def test_ip_camera():
         logger.error(f"Error testing IP camera: {e}")
         return jsonify({'error': f'Connection test failed: {str(e)}'}), 500
 
+@app.route('/api/enter-idle', methods=['POST'])
+def enter_idle():
+    """Manually enter idle mode"""
+    global is_idle, is_standby, idle_overlay_active, detection_state
+    try:
+        is_idle = True
+        is_standby = False
+        idle_overlay_active = True
+        detection_state = 'idle'
+        logger.info("Manually entered idle mode via API")
+        return jsonify({'success': True, 'message': 'System entered idle mode'})
+    except Exception as e:
+        logger.error(f"Error entering idle mode: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Initialize systems
     if not initialize_systems():
