@@ -1641,104 +1641,78 @@
 
         // Start detection
         async function startDetection() {
-            const classSelect = document.getElementById('classSelect');
-            const sessionName = document.getElementById('sessionName').value.trim();
+            const sessionName = document.getElementById('sessionName').value || 'Default Session';
             const sessionStartTime = document.getElementById('sessionStartTime').value;
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
+            const selectedClass = document.getElementById('classSelect').value;
             
-            if (!classSelect.value) {
-                showAlert('danger', 'Please select a class!');
+            if (!selectedClass) {
+                showAlert('warning', 'Please select a class first');
                 return;
             }
-            if (!sessionName) {
-                showAlert('danger', 'Please enter a session name!');
-                return;
-            }
-            if (!sessionStartTime) {
-                showAlert('danger', 'Please set the class start time!');
-                return;
-            }
-
-            startBtn.disabled = true;
-            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
             
             try {
                 const response = await fetch('/api/start-detection', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         session_name: sessionName,
                         session_start_time: sessionStartTime,
-                        class_name: classSelect.value // <-- Add this line
+                        class_name: selectedClass
                     })
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    currentSessionId = result.session_id;
-                    isDetectionActive = true;  // Set local state
-                    startBtn.disabled = true;
-                    stopBtn.disabled = false;
                     showAlert('success', 'Detection started successfully!');
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    isDetectionActive = true;
+                    detectionState = 'active';
                     
-                    // Start attendance updates now that detection is active
-                    startAttendanceUpdates();
+                    // Update idle button visibility
+                    updateIdleButtonVisibility();
                     
+                    // Start status updates
+                    startStatusUpdates();
                 } else {
                     showAlert('danger', result.error || 'Failed to start detection');
                 }
             } catch (error) {
+                console.error('Error starting detection:', error);
                 showAlert('danger', 'Error starting detection: ' + error.message);
-            } finally {
-                startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fas fa-play"></i> Start Detection';
             }
         }
 
         // Stop detection
         async function stopDetection() {
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            
-            stopBtn.disabled = true;
-            stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
-            
             try {
                 const response = await fetch('/api/stop-detection', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    method: 'POST'
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    currentSessionId = null;
-                    isDetectionActive = false;  // Set local state
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
                     showAlert('success', 'Detection stopped successfully!');
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                    isDetectionActive = false;
+                    detectionState = 'stopped';
                     
-                    // Stop attendance updates now that detection is inactive
-                    stopAttendanceUpdates();
+                    // Update idle button visibility
+                    updateIdleButtonVisibility();
                     
-                    // Clear attendance display
-                    updateLiveAttendanceFeed({});
-                    updateAbsentStudentsList({});
-                    
+                    // Stop status updates
+                    stopStatusUpdates();
                 } else {
                     showAlert('danger', result.error || 'Failed to stop detection');
                 }
             } catch (error) {
+                console.error('Error stopping detection:', error);
                 showAlert('danger', 'Error stopping detection: ' + error.message);
-            } finally {
-                stopBtn.disabled = false;
-                stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Detection';
             }
         }
 
@@ -1780,42 +1754,38 @@
         async function updateStatus() {
             try {
                 const response = await fetch('/api/status');
-                const status = await response.json();
+                const data = await response.json();
                 
-                const statusIndicator = document.getElementById('systemStatus');
-                const statusText = document.getElementById('statusText');
-                const presentCount = document.getElementById('presentCount');
-                const totalStudents = document.getElementById('totalStudents');
-                
-                // Update status indicator
-                if (status.face_system_ready) {
-                    statusIndicator.className = 'status-indicator status-active';
-                    statusText.textContent = 'System Ready';
+                if (data.face_system_ready) {
+                    document.getElementById('systemStatus').innerHTML = '<i class="fas fa-check-circle text-success"></i> Ready';
+                    document.getElementById('systemStatus').className = 'badge bg-success';
                 } else {
-                    statusIndicator.className = 'status-indicator status-inactive';
-                    statusText.textContent = 'System Error';
+                    document.getElementById('systemStatus').innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i> Not Ready';
+                    document.getElementById('systemStatus').className = 'badge bg-warning';
                 }
                 
-                // Update counts if elements exist
-                if (presentCount) {
-                    presentCount.textContent = status.current_session?.present_students || 0;
-                }
-                if (totalStudents) {
-                    totalStudents.textContent = status.students_count || 0;
+                // Update detection state
+                isDetectionActive = data.detection_active;
+                detectionState = data.detection_state;
+                
+                // Update button states
+                const startBtn = document.getElementById('startBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                
+                if (data.detection_active) {
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                } else {
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
                 }
                 
-                // Debug logging
-                console.log('Status update:', {
-                    detection_active: status.detection_active,
-                    present_students: status.current_session?.present_students,
-                    attendance_data: status.current_session?.attendance,
-                    all_students: status.current_session?.all_students
-                });
+                // Update idle button visibility
+                updateIdleButtonVisibility();
                 
-                // Update live attendance feed only if detection is active
-                if (status.detection_active) {
-                    updateLiveAttendanceFeed(status.current_session);
-                    updateAbsentStudentsList(status.current_session);
+                // Update attendance display
+                if (data.current_session) {
+                    updateAttendanceDisplay(data.current_session);
                 }
                 
             } catch (error) {
@@ -2808,6 +2778,9 @@
                 const resumeSessionList = document.getElementById('resumeSessionList');
                 resumeSessionList.innerHTML = '<p class="text-danger">Error resuming session: ' + error.message + '</p>';
             }
+            
+            // After successful resume, update idle button visibility
+            updateIdleButtonVisibility();
         }
 
         // Show create class modal
