@@ -295,34 +295,6 @@ async function resumeDetection() {
     }
 }
 
-// Manual idle mode functions
-async function enterIdleMode() {
-    try {
-        const response = await fetch('/api/enter-idle', { method: 'POST' });
-        const result = await response.json();
-        if (result.success) {
-            showAlert('info', 'System entered idle mode.');
-            // Optionally update UI state
-            isDetectionActive = true; // Still active, but now idle
-            updateIdleButtonVisibility();
-        } else {
-            showAlert('danger', result.error || 'Failed to enter idle mode.');
-        }
-    } catch (error) {
-        showAlert('danger', 'Error entering idle mode: ' + error.message);
-    }
-}
-
-function updateIdleButtonVisibility() {
-    const enterIdleBtn = document.getElementById('enterIdleBtn');
-    // Show only if detection is active
-    if (isDetectionActive) {
-        enterIdleBtn.style.display = '';
-    } else {
-        enterIdleBtn.style.display = 'none';
-    }
-}
-
 // Capture current frame and detect unknown faces
 async function captureCurrentFrame() {
     try {
