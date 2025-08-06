@@ -379,9 +379,11 @@ def _initialize_camera():
             logger.info(f"Attempting to connect to IP camera: {ip_camera_url}")
             camera = cv2.VideoCapture(ip_camera_url)
             
-            # IP camera specific settings - don't change resolution
+            # IP camera specific settings
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             camera.set(cv2.CAP_PROP_FPS, 10)  # Lower FPS for IP cameras
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             
             # Try to read a frame to test the connection
             ret, test_frame = camera.read()
@@ -396,12 +398,12 @@ def _initialize_camera():
             logger.warning(f"Error connecting to IP camera: {e}")
             return None
     else:
+        # Local camera code remains the same
         logger.info("Using local camera")
         camera = cv2.VideoCapture(0)
-        # Local camera settings - keep original resolution
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)  # Higher resolution for local
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        camera.set(cv2.CAP_PROP_FPS, 30)  # Higher FPS for local
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        camera.set(cv2.CAP_PROP_FPS, 15)
         camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         return camera
 
@@ -452,10 +454,33 @@ def release_camera():
         camera = None
 
 def detection_loop():
-    """Adaptive detection loop that works with the video feed"""
+    """Adaptive detection loop with proper state management"""
     global detection_active, face_system, attendance_manager, current_frame, current_faces
     global last_face_detection_time, is_idle, is_standby, idle_overlay_active, detection_cycle_time
     global consecutive_no_faces_count, detection_state, last_standby_check_time
+    
+    # Don't start detection if we're in IP mode but camera isn't configured
+    if camera_mode == "ip":
+        logger.info("IP camera mode selected - waiting for configuration")
+        detection_state = "waiting_for_config"
+        
+        # Wait for IP camera to be configured
+        while detection_active and camera_mode == "ip":
+            camera = get_camera()
+            if camera is not None and camera.isOpened():
+                logger.info("IP camera configured - starting detection")
+                break
+            time.sleep(1.0)  # Check every second
+        
+        if not detection_active:
+            logger.info("Detection stopped while waiting for IP camera configuration")
+            return
+    
+    # Now get the camera (should be configured by now)
+    camera = get_camera()
+    if not camera.isOpened():
+        logger.error("Failed to open camera")
+        return
     
     logger.info("Starting adaptive detection loop")
     detection_state = "active"
@@ -464,55 +489,84 @@ def detection_loop():
         loop_start_time = time.time()
         current_time = time.time()
         
-        # Use the current_frame that's being updated by the video feed
-        if current_frame is None:
+        ret, frame = camera.read()
+        if not ret:
+            logger.warning("Failed to read frame from camera")
             time.sleep(detection_cycle_time)
             continue
         
         try:
-            # Use the frame that's already captured for video feed
-            frame = current_frame.copy()
+            # Store current frame for photo capture
+            current_frame = frame.copy()
             
             # Detect all faces in the frame with timing
             detection_start = time.time()
             all_faces = face_system.detect_faces(frame)
-            detection_time = (time.time() - detection_start) * 1000
-            current_faces = all_faces
+            detection_time = (time.time() - detection_start) * 1000  # Convert to milliseconds
+            current_faces = all_faces  # Store for photo capture
             
-            # Process faces for attendance
+            # Update detection state based on faces found
             if all_faces:
-                # Faces detected - reset counters
+                # Faces detected - reset counters and use normal speed
                 last_face_detection_time = current_time
                 consecutive_no_faces_count = 0
+                last_standby_check_time = current_time  # Reset standby check time
                 
-                # Process faces for attendance
+                # Exit standby mode if we were in it
+                if is_standby:
+                    is_standby = False
+                    detection_cycle_time = 0.1
+                    detection_state = "active"
+                    logger.info("Face detected - exiting standby mode, returning to normal speed")
+                else:
+                    detection_cycle_time = 0.1  # Normal speed when faces are present
+                    detection_state = "active"
+                    logger.debug("Faces detected - using normal detection speed")
+                
+                # Process faces immediately for faster attendance recording
                 for face in all_faces:
                     if face['student_name'] and face['confidence'] >= 0.6:
+                        # Known face - mark attendance immediately
                         success = attendance_manager.mark_attendance(
                             face['student_name'], 
                             face['confidence']
                         )
                         if success:
                             logger.info(f"Marked attendance for {face['student_name']} (confidence: {face['confidence']:.2f})")
+                        else:
+                            logger.warning(f"Failed to mark attendance for {face['student_name']}")
             else:
-                # No faces detected - handle standby/idle logic
+                # No faces detected - increment counter
                 consecutive_no_faces_count += 1
+                
+                # Check for standby mode using actual elapsed time
                 time_since_last_face = current_time - last_face_detection_time
                 
-                # Check for standby/idle states
+                # Check for standby mode FIRST (before idle)
                 if not is_standby and time_since_last_face >= standby_timeout:
                     is_standby = True
                     detection_cycle_time = standby_cycle_time
                     detection_state = "standby"
-                    logger.info(f"No faces for {standby_timeout}s - entering standby mode")
+                    logger.info(f"No faces for {standby_timeout}s - entering standby mode ({standby_cycle_time}s cycle)")
                 
+                # Check for idle mode AFTER standby (only if not in standby)
                 elif not is_idle and time_since_last_face > idle_timeout:
                     is_idle = True
-                    is_standby = False
+                    is_standby = False  # Exit standby when going idle
                     idle_overlay_active = True
                     detection_state = "idle"
-                    logger.info(f"System went idle after {idle_timeout} seconds")
+                    logger.info(f"System went idle after {idle_timeout} seconds of no face detection")
+                    # When idle, we'll break out of the detection loop
                     break
+            
+            # Log performance if detection is slow
+            if detection_time > 100:  # More than 100ms
+                logger.warning(f"Slow face detection: {detection_time:.1f}ms for {len(all_faces)} faces")
+            
+            # Calculate total loop time
+            total_loop_time = (time.time() - loop_start_time) * 1000
+            if total_loop_time > 200:  # More than 200ms total
+                logger.warning(f"Slow detection loop: {total_loop_time:.1f}ms total")
             
             # Sleep based on current cycle time
             time.sleep(detection_cycle_time)
@@ -521,12 +575,15 @@ def detection_loop():
             logger.error(f"Error in detection loop: {e}")
             time.sleep(detection_cycle_time)
     
-    # Handle idle monitoring
+    # If we're here and idle, start the idle monitoring loop
     if is_idle:
         idle_monitoring_loop()
+        # After idle monitoring loop exits, restart the main detection loop if still active
         if detection_active and not is_idle:
             logger.info("Restarting main detection loop after exiting idle mode")
-            detection_loop()
+            detection_loop()  # Recursive call to restart the detection loop
+        else:
+            logger.info("Detection stopped after idle mode")
     else:
         logger.info("Detection loop stopped")
 
@@ -993,16 +1050,17 @@ def get_daily_summary():
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route that also updates global frame for detection"""
+    """Video streaming route - NO overlays, only face detection boxes"""
     def generate():
         global current_frame
         
         camera = get_camera()
         if camera is None:
-            logger.warning("Camera not available")
-            # Return blank frame
+            logger.warning("Camera not available - IP camera may need configuration")
+            # Create a blank frame with text
             blank_frame = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(blank_frame, "Camera not configured", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(blank_frame, "Please configure IP camera", (50, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             
             ret, buffer = cv2.imencode('.jpg', blank_frame)
             if ret:
@@ -1015,18 +1073,27 @@ def video_feed():
             logger.error("Failed to open camera for streaming")
             return
         
+        logger.info(f"Starting video feed generation for {camera_mode} camera")
+        
         while True:
             try:
                 ret, frame = camera.read()
                 if not ret:
                     logger.warning("Failed to read frame from camera")
-                    time.sleep(0.1)
+                    # For IP cameras, try to reconnect
+                    if camera_mode == "ip":
+                        logger.info("Attempting to reconnect to IP camera...")
+                        camera.release()
+                        time.sleep(1)
+                        camera = get_camera()
+                        if camera is None or not camera.isOpened():
+                            logger.error("Failed to reconnect to IP camera")
+                            break
+                    else:
+                        time.sleep(0.1)
                     continue
                 
-                # Update global frame for detection loop to use
-                current_frame = frame.copy()
-                
-                # Draw detection results on frame for display
+                # Draw detection results on frame (only face boxes and names)
                 if detection_active and face_system:
                     faces = face_system.detect_faces(frame)
                     
@@ -1043,12 +1110,17 @@ def video_feed():
                             label = f"{face['student_name']} ({face['confidence']:.2f})"
                             cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         else:
+                            # Show face index for unknown faces
                             label = f"Unknown #{i+1}"
                             cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                 
-                # Encode and yield frame
+                # Store current frame for photo capture
+                current_frame = frame.copy()
+                
+                # Encode frame
                 ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 if not ret:
+                    logger.warning("Failed to encode frame")
                     continue
                 
                 frame_bytes = buffer.tobytes()
