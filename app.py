@@ -379,36 +379,33 @@ def _initialize_camera():
             logger.info(f"Attempting to connect to IP camera: {ip_camera_url}")
             camera = cv2.VideoCapture(ip_camera_url)
             
-            # Give more time for IP camera connection and don't auto-fallback
+            # IP camera specific settings
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            camera.set(cv2.CAP_PROP_FPS, 10)  # Lower FPS for IP cameras
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            
             # Try to read a frame to test the connection
             ret, test_frame = camera.read()
             if camera.isOpened() and ret:
                 logger.info("Connected to IP camera successfully")
-                # Set camera properties for IP camera
-                camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                camera.set(cv2.CAP_PROP_FPS, 15)
-                camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            else:
-                logger.warning("Failed to connect to IP camera - keeping IP mode for manual configuration")
-                # Don't auto-fallback, let user configure the IP
-                camera = None
                 return camera
+            else:
+                logger.warning("Failed to connect to IP camera")
+                camera.release()
+                return None
         except Exception as e:
-            logger.warning(f"Error connecting to IP camera: {e} - keeping IP mode for manual configuration")
-            # Don't auto-fallback, let user configure the IP
-            camera = None
-            return camera
+            logger.warning(f"Error connecting to IP camera: {e}")
+            return None
     else:
+        # Local camera code remains the same
         logger.info("Using local camera")
         camera = cv2.VideoCapture(0)
-        # Set camera properties for local camera
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         camera.set(cv2.CAP_PROP_FPS, 15)
         camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    
-    return camera
+        return camera
 
 def switch_camera(target_mode=None):
     """Switch between local and IP camera"""
@@ -1059,7 +1056,6 @@ def video_feed():
         
         camera = get_camera()
         if camera is None:
-            # If camera is None (IP mode not configured), return a blank frame or error
             logger.warning("Camera not available - IP camera may need configuration")
             # Create a blank frame with text
             blank_frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -1077,44 +1073,63 @@ def video_feed():
             logger.error("Failed to open camera for streaming")
             return
         
+        logger.info(f"Starting video feed generation for {camera_mode} camera")
+        
         while True:
-            ret, frame = camera.read()
-            if not ret:
-                break
-            
-            # Draw detection results on frame (only face boxes and names)
-            if detection_active and face_system:
-                faces = face_system.detect_faces(frame)
-                
-                for i, face in enumerate(faces):
-                    bbox = face['bbox']
-                    x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
-                    
-                    # Draw bounding box
-                    color = (0, 255, 0) if face['student_name'] else (0, 0, 255)
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                    
-                    # Draw student name and confidence
-                    if face['student_name']:
-                        label = f"{face['student_name']} ({face['confidence']:.2f})"
-                        cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            try:
+                ret, frame = camera.read()
+                if not ret:
+                    logger.warning("Failed to read frame from camera")
+                    # For IP cameras, try to reconnect
+                    if camera_mode == "ip":
+                        logger.info("Attempting to reconnect to IP camera...")
+                        camera.release()
+                        time.sleep(1)
+                        camera = get_camera()
+                        if camera is None or not camera.isOpened():
+                            logger.error("Failed to reconnect to IP camera")
+                            break
                     else:
-                        # Show face index for unknown faces
-                        label = f"Unknown #{i+1}"
-                        cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            
-            # Store current frame for photo capture
-            current_frame = frame.copy()
-            
-            # NO OVERLAYS - let the frontend handle all overlays
-            # Encode frame
-            ret, buffer = cv2.imencode('.jpg', frame)
-            if not ret:
-                continue
-            
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                        time.sleep(0.1)
+                    continue
+                
+                # Draw detection results on frame (only face boxes and names)
+                if detection_active and face_system:
+                    faces = face_system.detect_faces(frame)
+                    
+                    for i, face in enumerate(faces):
+                        bbox = face['bbox']
+                        x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+                        
+                        # Draw bounding box
+                        color = (0, 255, 0) if face['student_name'] else (0, 0, 255)
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                        
+                        # Draw student name and confidence
+                        if face['student_name']:
+                            label = f"{face['student_name']} ({face['confidence']:.2f})"
+                            cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        else:
+                            # Show face index for unknown faces
+                            label = f"Unknown #{i+1}"
+                            cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                
+                # Store current frame for photo capture
+                current_frame = frame.copy()
+                
+                # Encode frame
+                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if not ret:
+                    logger.warning("Failed to encode frame")
+                    continue
+                
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                       
+            except Exception as e:
+                logger.error(f"Error in video feed generation: {e}")
+                time.sleep(0.1)
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
@@ -1950,6 +1965,51 @@ def test_ip_camera():
     except Exception as e:
         logger.error(f"Error testing IP camera: {e}")
         return jsonify({'error': f'Connection test failed: {str(e)}'}), 500
+
+@app.route('/api/test-camera')
+def test_camera():
+    """Test camera connection"""
+    camera = get_camera()
+    if camera is None:
+        return jsonify({'error': 'Camera not initialized'})
+    
+    if not camera.isOpened():
+        return jsonify({'error': 'Camera not opened'})
+    
+    ret, frame = camera.read()
+    if not ret:
+        return jsonify({'error': 'Failed to read frame'})
+    
+    return jsonify({
+        'success': True,
+        'frame_size': f"{frame.shape[1]}x{frame.shape[0]}",
+        'camera_mode': camera_mode
+    })
+
+@app.route('/api/test-frame')
+def test_frame():
+    """Test if we can capture a single frame"""
+    camera = get_camera()
+    if camera is None:
+        return jsonify({'error': 'Camera not initialized'})
+    
+    if not camera.isOpened():
+        return jsonify({'error': 'Camera not opened'})
+    
+    ret, frame = camera.read()
+    if not ret:
+        return jsonify({'error': 'Failed to read frame'})
+    
+    # Save a test frame
+    test_path = "temp/test_frame.jpg"
+    os.makedirs("temp", exist_ok=True)
+    cv2.imwrite(test_path, frame)
+    
+    return jsonify({
+        'success': True,
+        'frame_size': f"{frame.shape[1]}x{frame.shape[0]}",
+        'test_image': f"/temp/test_frame.jpg"
+    })
 
 if __name__ == '__main__':
     # Initialize systems
