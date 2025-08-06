@@ -1,4 +1,53 @@
-// Start detection
+/**
+ * Detection Control Module
+ * 
+ * This module handles all face detection session management including
+ * starting, stopping, and resuming detection sessions. It manages the
+ * communication with the backend detection system and handles the
+ * detection state transitions.
+ * 
+ * Key Features:
+ * - Session start/stop control
+ * - Detection state management
+ * - Idle mode handling
+ * - Resume functionality
+ * - Unknown face capture
+ * 
+ * State Management:
+ * - Detection active/inactive states
+ * - Session ID tracking
+ * - Button state synchronization
+ * - Real-time status updates
+ * 
+ * API Endpoints Used:
+ * - POST /api/start-detection: Start new detection session
+ * - POST /api/stop-detection: Stop current detection session
+ * - POST /api/resume-from-idle: Resume from idle state
+ * - POST /api/capture-screenshot: Capture unknown faces
+ */
+
+/**
+ * Start Detection Session
+ * 
+ * Initiates a new face detection session with the specified parameters.
+ * Validates input data, communicates with the backend to start detection,
+ * and updates the UI state accordingly.
+ * 
+ * Required Parameters:
+ * - Class selection (from dropdown)
+ * - Session name (user input)
+ * - Session start time (for punctuality tracking)
+ * 
+ * Process:
+ * 1. Validate all required inputs
+ * 2. Send start request to backend
+ * 3. Update UI state (buttons, status)
+ * 4. Start attendance updates
+ * 5. Show success/error feedback
+ * 
+ * @async
+ * @throws {Error} If detection fails to start
+ */
 async function startDetection() {
     const classSelect = document.getElementById('classSelect');
     const sessionName = document.getElementById('sessionName').value.trim();
@@ -58,7 +107,22 @@ async function startDetection() {
     }
 }
 
-// Stop detection
+/**
+ * Stop Detection Session
+ * 
+ * Terminates the current detection session and saves the attendance data.
+ * Cleans up the session state and resets the UI to the initial state.
+ * 
+ * Process:
+ * 1. Send stop request to backend
+ * 2. Clear session ID
+ * 3. Reset UI state
+ * 4. Stop attendance updates
+ * 5. Clear attendance displays
+ * 
+ * @async
+ * @throws {Error} If detection fails to stop
+ */
 async function stopDetection() {
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -101,7 +165,15 @@ async function stopDetection() {
     }
 }
 
-// Update attendance only (simplified - no need to check detection_active)
+/**
+ * Update attendance only (simplified - no need to check detection_active)
+ * 
+ * Fetches and displays attendance data from the backend.
+ * Updates the present count, total students, and attendance feed.
+ * 
+ * @async
+ * @throws {Error} If attendance data cannot be fetched
+ */
 async function updateAttendanceOnly() {
     try {
         const response = await fetch('/api/attendance');
@@ -135,7 +207,15 @@ async function updateAttendanceOnly() {
     }
 }
 
-// Update system status (keep this as is - it's useful for system health)
+/**
+ * Update system status (keep this as is - it's useful for system health)
+ * 
+ * Fetches and displays system status from the backend.
+ * Updates status indicators and counts.
+ * 
+ * @async
+ * @throws {Error} If system status cannot be fetched
+ */
 async function updateStatus() {
     try {
         const response = await fetch('/api/status');
@@ -182,7 +262,15 @@ async function updateStatus() {
     }
 }
 
-// Check detection status for standby/idle states
+/**
+ * Check detection status for standby/idle states
+ * 
+ * Polls the backend to determine if the system is in an idle or standby
+ * state and displays appropriate overlays.
+ * 
+ * @async
+ * @throws {Error} If detection status cannot be fetched
+ */
 function checkDetectionStatus() {
     fetch('/api/detection-status')
         .then(response => response.json())
@@ -227,7 +315,26 @@ function checkDetectionStatus() {
         });
 }
 
-// Resume detection from idle state - using new dedicated endpoint
+/**
+ * Resume Detection from Idle State
+ * 
+ * Resumes detection after the system has entered idle mode due to
+ * no face detection for an extended period. Restarts the detection
+ * loop and updates the UI state.
+ * 
+ * Idle State Triggers:
+ * - No faces detected for 120 seconds (configurable)
+ * - System automatically enters idle monitoring mode
+ * 
+ * Process:
+ * 1. Send resume request to backend
+ * 2. Update detection state
+ * 3. Hide idle overlay
+ * 4. Restart detection loop
+ * 
+ * @async
+ * @throws {Error} If resume fails
+ */
 async function resumeDetection() {
     const resumeBtn = event.target;
     const originalText = resumeBtn.innerHTML;
@@ -295,7 +402,22 @@ async function resumeDetection() {
     }
 }
 
-// Capture current frame and detect unknown faces
+/**
+ * Capture Unknown Faces
+ * 
+ * Captures the current video frame and identifies unknown faces for
+ * potential addition to the student database. Opens a modal for
+ * managing unrecognized faces.
+ * 
+ * Process:
+ * 1. Capture current video frame
+ * 2. Detect unknown faces in frame
+ * 3. Display faces in modal
+ * 4. Allow user to add as new students
+ * 
+ * @async
+ * @throws {Error} If capture fails
+ */
 async function captureCurrentFrame() {
     try {
         const response = await fetch('/api/capture-screenshot', { method: 'POST' });

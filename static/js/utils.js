@@ -1,88 +1,43 @@
-// Add this function to show cache status
-async function showCacheStatus() {
-    try {
-        const response = await fetch('/api/cache/status');
-        const data = await response.json();
-        
-        if (data.success) {
-            console.log('Cache status:', data.cache_info);
-            const currentClass = document.getElementById('classSelect').value;
-            if (currentClass && data.cache_info[currentClass]) {
-                const cacheInfo = data.cache_info[currentClass];
-                if (cacheInfo.students && cacheInfo.students.valid) {
-                    console.log(`Class "${currentClass}" data is cached`);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error getting cache status:', error);
-    }
-}
+/**
+ * Utility Functions Module
+ * 
+ * This module contains utility functions used across the application
+ * including student management, cache management, and helper functions.
+ * Provides common functionality that doesn't fit into other modules.
+ * 
+ * Key Features:
+ * - Student addition utilities
+ * - Cache management functions
+ * - Performance monitoring
+ * - Helper functions
+ * 
+ * Cache Management:
+ * - Cache status monitoring
+ * - Cache cleanup operations
+ * - Performance statistics
+ * 
+ * Student Management:
+ * - Student addition workflows
+ * - Form validation
+ * - File upload handling
+ */
 
-// Add cache management functions
-async function clearCache() {
-    try {
-        const response = await fetch('/api/cache/clear', {
-            method: 'POST'
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            showAlert('success', 'Cache cleared successfully');
-        } else {
-            showAlert('danger', result.error || 'Failed to clear cache');
-        }
-    } catch (error) {
-        showAlert('danger', 'Error clearing cache: ' + error.message);
-    }
-}
-
-async function cleanupCache() {
-    try {
-        const maxAge = prompt('Enter maximum age in hours (default: 24):', '24');
-        if (maxAge === null) return; // User cancelled
-        
-        const response = await fetch('/api/cache/cleanup', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ max_age_hours: parseInt(maxAge) || 24 })
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            showAlert('success', result.message);
-        } else {
-            showAlert('danger', result.error || 'Failed to cleanup cache');
-        }
-    } catch (error) {
-        showAlert('danger', 'Error cleaning up cache: ' + error.message);
-    }
-}
-
-async function showCacheStats() {
-    try {
-        const response = await fetch('/api/cache/stats');
-        const data = await response.json();
-        
-        if (data.success) {
-            const stats = data.stats;
-            const message = `Cache Statistics:\n` +
-                          `Total Files: ${stats.total_files}\n` +
-                          `Total Size: ${stats.total_size_mb.toFixed(2)} MB\n` +
-                          `Cached Classes: ${Object.keys(stats.cache_info).length}`;
-            
-            alert(message);
-        } else {
-            showAlert('danger', data.error || 'Failed to get cache stats');
-        }
-    } catch (error) {
-        showAlert('danger', 'Error getting cache stats: ' + error.message);
-    }
-}
-
-// Submit logic for adding students
+/**
+ * Submit Add Student Form
+ * 
+ * Processes the student addition form and submits the data
+ * to the backend. Handles different addition methods (single
+ * image, multiple images, existing folder).
+ * 
+ * Process:
+ * 1. Validate form data
+ * 2. Prepare form data
+ * 3. Submit to backend
+ * 4. Handle response
+ * 
+ * @async
+ * @throws {Error} If submission fails
+ */
 async function submitAddStudent() {
     const method = document.querySelector('input[name="addMethod"]:checked').value;
     const currentClass = document.getElementById('classSelect').value;
@@ -149,6 +104,144 @@ async function submitAddStudent() {
         }
     } catch (error) {
         showAlert('danger', 'Error adding student: ' + error.message);
+    }
+}
+
+/**
+ * Show Cache Status
+ * 
+ * Displays information about the current cache status including
+ * cache size, hit rates, and performance statistics.
+ * 
+ * Process:
+ * 1. Fetch cache status from backend
+ * 2. Display statistics
+ * 3. Show performance metrics
+ * 
+ * @async
+ * @throws {Error} If status fetch fails
+ */
+async function showCacheStatus() {
+    try {
+        const response = await fetch('/api/cache/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('Cache status:', data.cache_info);
+            const currentClass = document.getElementById('classSelect').value;
+            if (currentClass && data.cache_info[currentClass]) {
+                const cacheInfo = data.cache_info[currentClass];
+                if (cacheInfo.students && cacheInfo.students.valid) {
+                    console.log(`Class "${currentClass}" data is cached`);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error getting cache status:', error);
+    }
+}
+
+/**
+ * Clear All Cache
+ * 
+ * Removes all cached data to free up space and resolve
+ * potential cache-related issues.
+ * 
+ * Process:
+ * 1. Send clear request to backend
+ * 2. Confirm operation
+ * 3. Update cache status
+ * 
+ * @async
+ * @throws {Error} If clear operation fails
+ */
+async function clearCache() {
+    try {
+        const response = await fetch('/api/cache/clear', {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', 'Cache cleared successfully');
+        } else {
+            showAlert('danger', result.error || 'Failed to clear cache');
+        }
+    } catch (error) {
+        showAlert('danger', 'Error clearing cache: ' + error.message);
+    }
+}
+
+/**
+ * Cleanup Old Cache
+ * 
+ * Removes old cache files to free up space while preserving
+ * recent cache data for performance.
+ * 
+ * Process:
+ * 1. Identify old cache files
+ * 2. Remove expired data
+ * 3. Update cache status
+ * 
+ * @async
+ * @throws {Error} If cleanup fails
+ */
+async function cleanupCache() {
+    try {
+        const maxAge = prompt('Enter maximum age in hours (default: 24):', '24');
+        if (maxAge === null) return; // User cancelled
+        
+        const response = await fetch('/api/cache/cleanup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ max_age_hours: parseInt(maxAge) || 24 })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message);
+        } else {
+            showAlert('danger', result.error || 'Failed to cleanup cache');
+        }
+    } catch (error) {
+        showAlert('danger', 'Error cleaning up cache: ' + error.message);
+    }
+}
+
+/**
+ * Show Cache Statistics
+ * 
+ * Displays detailed cache performance statistics including
+ * hit rates, file counts, and storage usage.
+ * 
+ * Process:
+ * 1. Fetch cache statistics
+ * 2. Display performance metrics
+ * 3. Show storage information
+ * 
+ * @async
+ * @throws {Error} If statistics fetch fails
+ */
+async function showCacheStats() {
+    try {
+        const response = await fetch('/api/cache/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+            const stats = data.stats;
+            const message = `Cache Statistics:\n` +
+                          `Total Files: ${stats.total_files}\n` +
+                          `Total Size: ${stats.total_size_mb.toFixed(2)} MB\n` +
+                          `Cached Classes: ${Object.keys(stats.cache_info).length}`;
+            
+            alert(message);
+        } else {
+            showAlert('danger', data.error || 'Failed to get cache stats');
+        }
+    } catch (error) {
+        showAlert('danger', 'Error getting cache stats: ' + error.message);
     }
 }
 

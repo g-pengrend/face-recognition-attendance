@@ -1,3 +1,34 @@
+/**
+ * Main Application Controller
+ * 
+ * This file handles the core application initialization, global state management,
+ * and coordination between different modules. It serves as the entry point for
+ * the application and manages the overall application lifecycle.
+ * 
+ * Key Responsibilities:
+ * - Application initialization and startup sequence
+ * - Global variable management (session ID, detection state, camera mode)
+ * - Real-time status updates and polling
+ * - Event listener setup and management
+ * - UI state synchronization
+ * 
+ * Global Variables:
+ * - currentSessionId: Tracks the active session ID
+ * - statusUpdateInterval: Interval for system status updates
+ * - attendanceUpdateInterval: Interval for attendance data updates
+ * - isDetectionActive: Boolean flag for detection state
+ * - lastPresentStudents: Set of students present in last update
+ * - currentCameraMode: Current camera mode ('local' or 'ip')
+ * 
+ * Dependencies:
+ * - detection.js: For detection control functions
+ * - attendance.js: For attendance data management
+ * - camera.js: For camera control functions
+ * - classes.js: For class management
+ * - sessions.js: For session history
+ * - utils.js: For utility functions
+ */
+
 // Global variables
 let currentSessionId = null;
 let statusUpdateInterval = null;
@@ -6,7 +37,21 @@ let isDetectionActive = false;
 let lastPresentStudents = new Set();
 let currentCameraMode = 'local';
 
-// Initialize the application
+/**
+ * Application Initialization
+ * 
+ * Sets up the application when the DOM is loaded. Performs a step-by-step
+ * initialization sequence to ensure all systems are ready before showing
+ * the main interface.
+ * 
+ * Initialization Steps:
+ * 1. Load available classes
+ * 2. Check system status
+ * 3. Load student data
+ * 4. Load session history
+ * 5. Start status updates
+ * 6. Hide loading screen
+ */
 document.addEventListener('DOMContentLoaded', function() {
     // Show loading screen
     const loadingScreen = document.getElementById('loadingScreen');
@@ -120,7 +165,16 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(updateCameraStatus, 5000); // Update every 5 seconds
 });
 
-// Start only status updates (not attendance updates)
+/**
+ * Start System Status Updates
+ * 
+ * Initiates periodic polling of system status to keep the UI synchronized
+ * with the backend state. Updates system status indicators and manages
+ * button states based on current system status.
+ * 
+ * Polling Frequency: Every 2 seconds
+ * Updates: System status, detection state, camera status
+ */
 function startStatusUpdates() {
     // Update status every 5 seconds
     statusUpdateInterval = setInterval(() => {
@@ -132,7 +186,16 @@ function startStatusUpdates() {
     }, 5000);
 }
 
-// Start attendance updates when detection starts
+/**
+ * Start Attendance Updates
+ * 
+ * Begins real-time polling of attendance data to provide live updates
+ * of student presence. Updates the attendance feed and absent students
+ * list in real-time.
+ * 
+ * Polling Frequency: Every 1 second
+ * Updates: Live attendance feed, absent students list
+ */
 function startAttendanceUpdates() {
     if (attendanceUpdateInterval) {
         clearInterval(attendanceUpdateInterval);
@@ -154,7 +217,12 @@ function startAttendanceUpdates() {
     }, 2000);
 }
 
-// Stop attendance updates when detection stops
+/**
+ * Stop Attendance Updates
+ * 
+ * Halts the real-time attendance polling to conserve resources when
+ * detection is not active. Clears intervals and resets attendance displays.
+ */
 function stopAttendanceUpdates() {
     if (attendanceUpdateInterval) {
         clearInterval(attendanceUpdateInterval);
@@ -162,7 +230,16 @@ function stopAttendanceUpdates() {
     }
 }
 
-// Show alert function
+/**
+ * Display Alert Messages
+ * 
+ * Shows user-friendly alert messages using Bootstrap toast notifications.
+ * Supports different alert types (success, danger, warning, info) with
+ * appropriate styling and auto-dismiss functionality.
+ * 
+ * @param {string} type - Alert type ('success', 'danger', 'warning', 'info')
+ * @param {string} message - Alert message to display
+ */
 function showAlert(type, message) {
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;

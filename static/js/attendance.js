@@ -1,4 +1,49 @@
-// Update live attendance feed
+/**
+ * Attendance Management Module
+ * 
+ * This module handles all attendance-related functionality including
+ * real-time attendance updates, student management, and attendance
+ * data processing. It manages the live attendance feed and provides
+ * tools for adding and managing students.
+ * 
+ * Key Features:
+ * - Live attendance feed updates
+ * - Student presence tracking
+ * - Unknown face management
+ * - Student addition and removal
+ * - Attendance toast notifications
+ * 
+ * Data Flow:
+ * - Receives attendance data from backend
+ * - Updates UI components in real-time
+ * - Manages student database operations
+ * - Handles attendance notifications
+ * 
+ * UI Components Managed:
+ * - Live attendance list
+ * - Absent students list
+ * - Attendance toast notifications
+ * - Student management modals
+ */
+
+/**
+ * Update Live Attendance Feed
+ * 
+ * Updates the real-time display of currently present students.
+ * Compares current attendance with previous state to show changes
+ * and trigger notifications for new arrivals.
+ * 
+ * Process:
+ * 1. Receive attendance data from backend
+ * 2. Compare with previous state
+ * 3. Update attendance list display
+ * 4. Show notifications for new students
+ * 5. Update present student count
+ * 
+ * @param {Object} attendance - Attendance data from backend
+ * @param {Object} attendance.attendance - Object with student attendance records
+ * @param {Array} attendance.all_students - List of all registered students
+ */
 function updateLiveAttendanceFeed(attendance) {
     const feedDiv = document.getElementById('liveAttendanceList');
     if (!attendance || !attendance.attendance || Object.keys(attendance.attendance).length === 0) {
@@ -73,7 +118,21 @@ function updateLiveAttendanceFeed(attendance) {
     lastPresentStudents = currentPresent;
 }
 
-// Update absent students list
+/**
+ * Update Absent Students List
+ * 
+ * Displays the list of students who are not yet present in the
+ * current session. Calculates absent students by comparing registered
+ * students with present students.
+ * 
+ * Process:
+ * 1. Get list of all registered students
+ * 2. Compare with present students
+ * 3. Display absent students list
+ * 4. Update absent count
+ * 
+ * @param {Object} attendance - Attendance data from backend
+ */
 function updateAbsentStudentsList(attendance) {
     const absentDiv = document.getElementById('absentStudentsList');
     if (!attendance) {
@@ -112,6 +171,14 @@ function updateAbsentStudentsList(attendance) {
     }
 }
 
+/**
+ * Show Attendance Toast Notification
+ * 
+ * Displays a temporary notification when a student is marked present.
+ * Shows the student name and automatically dismisses after a few seconds.
+ * 
+ * @param {string} studentName - Name of the student marked present
+ */
 function showAttendanceToast(studentName) {
     const toast = document.getElementById('attendanceToast');
     const toastText = document.getElementById('attendanceToastText');
@@ -125,7 +192,20 @@ function showAttendanceToast(studentName) {
     }, 1500);  // Show for 1.5 seconds instead of 2
 }
 
-// Load students
+/**
+ * Load Students List
+ * 
+ * Fetches and displays the list of all registered students in the
+ * current class. Updates the students tab with current student data.
+ * 
+ * Process:
+ * 1. Fetch students from backend
+ * 2. Display in students list
+ * 3. Show student count and details
+ * 
+ * @async
+ * @throws {Error} If loading fails
+ */
 async function loadStudents() {
     const studentsList = document.getElementById('studentsList');
     studentsList.innerHTML = '<div class="loading"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading students...</p></div>';
@@ -160,7 +240,22 @@ async function loadStudents() {
     }
 }
 
-// Remove student
+/**
+ * Remove Student
+ * 
+ * Removes a student from the current class and updates the student
+ * database. Requires confirmation and updates the UI accordingly.
+ * 
+ * Process:
+ * 1. Confirm deletion with user
+ * 2. Send removal request to backend
+ * 3. Update local student list
+ * 4. Refresh attendance displays
+ * 
+ * @param {string} studentName - Name of student to remove
+ * @async
+ * @throws {Error} If removal fails
+ */
 async function removeStudent(studentName) {
     if (!confirm(`Are you sure you want to remove ${studentName}?`)) {
         return;

@@ -1,4 +1,45 @@
-// Load available classes
+/**
+ * Class Management Module
+ * 
+ * This module handles all class-related functionality including
+ * class loading, class switching, and class creation. It manages
+ * the class selection interface and provides tools for creating
+ * new classes from CSV files.
+ * 
+ * Key Features:
+ * - Class loading and display
+ * - Class switching
+ * - CSV-based class creation
+ * - Student folder management
+ * 
+ * Data Flow:
+ * - Fetches available classes from backend
+ * - Manages class selection state
+ * - Handles CSV file processing
+ * - Updates student counts
+ * 
+ * UI Components:
+ * - Class selector dropdown
+ * - Create class modal
+ * - Class creation progress
+ */
+
+/**
+ * Load Available Classes
+ * 
+ * Fetches and displays the list of available classes in the
+ * class selector dropdown. Updates the UI with current class
+ * information and student counts.
+ * 
+ * Process:
+ * 1. Fetch classes from backend
+ * 2. Populate dropdown
+ * 3. Set current class
+ * 4. Update student counts
+ * 
+ * @async
+ * @throws {Error} If loading fails
+ */
 async function loadClasses() {
     try {
         const response = await fetch('/api/classes');
@@ -28,7 +69,22 @@ async function loadClasses() {
     }
 }
 
-// Change class
+/**
+ * Change Active Class
+ * 
+ * Switches to a different class and loads its associated
+ * student data. Updates the UI to reflect the new class
+ * selection and student information.
+ * 
+ * Process:
+ * 1. Validate class selection
+ * 2. Send class change request to backend
+ * 3. Update UI state
+ * 4. Load class-specific data
+ * 
+ * @async
+ * @throws {Error} If class change fails
+ */
 async function changeClass() {
     const classSelect = document.getElementById('classSelect');
     const selectedClass = classSelect.value;
@@ -75,7 +131,17 @@ async function changeClass() {
     }
 }
 
-// Show create class modal
+/**
+ * Show Create Class Modal
+ * 
+ * Displays the modal for creating a new class from a CSV file.
+ * Provides interface for class name input and CSV file upload.
+ * 
+ * Process:
+ * 1. Show modal
+ * 2. Reset form
+ * 3. Prepare for file upload
+ */
 function showCreateClassModal() {
     // Clear previous form data
     document.getElementById('newClassName').value = '';
@@ -87,7 +153,22 @@ function showCreateClassModal() {
     modal.show();
 }
 
-// Create new class from CSV
+/**
+ * Create New Class from CSV
+ * 
+ * Creates a new class by processing a CSV file containing
+ * student information. Automatically creates student folders
+ * and sets up the class structure.
+ * 
+ * Process:
+ * 1. Validate CSV file
+ * 2. Process student data
+ * 3. Create class folders
+ * 4. Update class list
+ * 
+ * @async
+ * @throws {Error} If creation fails
+ */
 async function createNewClass() {
     const className = document.getElementById('newClassName').value.trim();
     const csvFile = document.getElementById('csvFile').files[0];
