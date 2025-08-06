@@ -1,0 +1,982 @@
+<style>
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden; /* Prevent horizontal scroll */
+    }
+    
+    /* Fix the main container to prevent horizontal scroll */
+    .main-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        margin: 20px auto;
+        max-width: 92vw; /* Reduced from 95vw to account for margins */
+        width: 92vw;
+        min-width: 320px;
+        box-sizing: border-box; /* Ensure padding is included in width calculation */
+    }
+    
+    .header {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        padding: 32px 20px 24px 20px;
+        border-radius: 20px 20px 0 0;
+        text-align: center;
+        margin-bottom: 18px;
+    }
+
+    .header h1 {
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-bottom: 10px;
+        letter-spacing: 1px;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .header p {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 22px;
+        margin-top: 0;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+    
+    /* Update class selector for better responsiveness */
+    .class-select-container {
+        background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+        border-radius: 16px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+        padding: 18px 28px 14px 28px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 18px;
+        justify-content: center;
+        max-width: 600px;
+        width: 90%;
+        margin-left: auto;
+        margin-right: auto;
+        margin-top: 18px;
+        margin-bottom: 18px;
+        flex-wrap: wrap; /* Allow wrapping on small screens */
+    }
+
+    .class-label {
+        color: #fff;
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin-bottom: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .class-label i {
+        font-size: 1.3rem;
+        color: #fff;
+    }
+
+    .class-selector {
+        background: rgba(255,255,255,0.95);
+        color: #333;
+        border: 2px solid #00c6fb;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        padding: 8px 18px;
+        margin-left: 10px;
+        min-width: 180px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        transition: border-color 0.2s;
+    }
+
+    .class-selector:focus {
+        border-color: #4facfe;
+        outline: none;
+    }
+    
+    .class-selector option {
+        background: #4facfe;
+        color: white;
+    }
+    
+    .class-label {
+        color: white;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
+    
+    .status-indicator {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    
+    .status-active {
+        background-color: #28a745;
+        box-shadow: 0 0 8px 2px #28a74599;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-inactive {
+        background-color: #dc3545;
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    
+    .video-container {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    .video-feed {
+        width: 100%;
+        height: auto;
+        max-height: 70vh;
+        min-height: 400px;
+        object-fit: cover;
+    }
+    
+    .control-panel {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 15px 0;
+    }
+    
+    .btn-custom {
+        border-radius: 20px;
+        padding: 8px 20px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+    
+    .btn-start {
+        background: linear-gradient(135deg, #28a745, #20c997);
+        border: none;
+        color: white;
+    }
+    
+    .btn-stop {
+        background: linear-gradient(135deg, #dc3545, #fd7e14);
+        border: none;
+        color: white;
+    }
+    
+    .btn-start:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+    }
+    
+    .btn-stop:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(220, 53, 69, 0.3);
+    }
+    
+    .attendance-card {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+    
+    .attendance-card h6 {
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+    }
+    
+    .attendance-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .student-item {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 10px;
+        margin: 8px 0;
+        border-left: 3px solid #28a745;
+    }
+    
+    .student-item.unknown {
+        border-left-color: #dc3545;
+    }
+    
+    .student-item small {
+        font-size: 0.75rem;
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        margin: 10px 0;
+    }
+    
+    .stats-number {
+        font-size: 1.8rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .tab-content {
+        background: white;
+        border-radius: 0 0 15px 15px;
+        padding: 20px;
+    }
+    
+    .nav-tabs {
+        border-bottom: none;
+    }
+    
+    .nav-tabs .nav-link {
+        border: none;
+        border-radius: 25px 25px 0 0;
+        margin-right: 5px;
+        font-weight: 600;
+        color: #6c757d;
+    }
+    
+    .nav-tabs .nav-link.active {
+        background: linear-gradient(135deg, #4facfe, #00f2fe);
+        color: white;
+    }
+    
+    .session-item {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        border-left: 4px solid #007bff;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .session-item:hover {
+        background: #e9ecef;
+        transform: translateX(5px);
+    }
+    
+    .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+
+    /* Add loading screen styles */
+    .loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        color: white;
+    }
+    
+    .loading-screen.hidden {
+        display: none;
+    }
+    
+    .loading-spinner {
+        width: 4rem;
+        height: 4rem;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .loading-subtext {
+        font-size: 0.9rem;
+        opacity: 0.8;
+    }
+
+    /* Toast notification styles */
+    .attendance-toast {
+        min-width: 120px;
+        max-width: 80vw;
+        width: auto;
+        background: linear-gradient(135deg, #28a745 60%, #20c997 100%);
+        color: white;
+        padding: 14px 24px;
+        border-radius: 30px;
+        box-shadow: 0 8px 24px rgba(40,167,69,0.15);
+        font-size: 1.15rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s, transform 0.3s;
+        justify-content: center;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .attendance-toast.show {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(-50%) scale(1.05);
+    }
+    .attendance-toast i {
+        font-size: 1.5rem;
+    }
+    #attendanceToastText {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: inline-block;
+        max-width: 60vw;
+    }
+    #statusText {
+        font-size: 1.08rem;
+        font-weight: 600;
+        vertical-align: middle;
+    }
+
+    /* Improve dropdown behavior */
+    .form-select:focus {
+        border-color: #4facfe;
+        box-shadow: 0 0 0 0.2rem rgba(79, 172, 254, 0.25);
+    }
+
+    .form-select option:hover {
+        background-color: #e9ecef;
+    }
+
+    /* Style for selected student input */
+    .student-selected {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+    }
+
+    .student-dropdown {
+        border: 1px solid #ced4da;
+        border-radius: 0.375rem;
+        background: white;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    .selected-student-display {
+        margin-top: 10px;
+    }
+
+    .selected-student-display .alert {
+        margin-bottom: 0;
+        padding: 8px 12px;
+    }
+
+    .student-dropdown select {
+        border: none;
+        box-shadow: none;
+    }
+
+    .student-dropdown select:focus {
+        box-shadow: none;
+    }
+
+    /* Standby state indicator */
+    .standby-indicator {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(255, 193, 7, 0.9);
+        color: #000;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: bold;
+        z-index: 15;
+        display: none;
+    }
+    
+    .standby-indicator i {
+        margin-right: 5px;
+    }
+
+    /* Idle overlay styles */
+    .idle-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 25; /* Higher than attendance toast */
+        color: white;
+        text-align: center;
+        border-radius: 10px; /* Match video container */
+    }
+
+    .idle-overlay h3 {
+        font-size: 1.8rem;
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    .idle-overlay p {
+        font-size: 1.1rem;
+        margin-bottom: 25px;
+        opacity: 0.9;
+    }
+
+    .btn-resume {
+        background: linear-gradient(135deg, #28a745, #20c997);
+        border: none;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 25px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .btn-resume:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+        background: linear-gradient(135deg, #20c997, #28a745);
+    }
+
+    /* Standby overlay styles */
+    .standby-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4); /* Lighter than idle overlay */
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 20; /* Lower than idle overlay */
+        color: white;
+        text-align: center;
+        border-radius: 10px;
+    }
+
+    .standby-overlay h3 {
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+        font-weight: 600;
+        color: #ffc107; /* Yellow color for standby */
+    }
+
+    .standby-overlay p {
+        font-size: 1rem;
+        margin-bottom: 10px;
+        opacity: 0.9;
+    }
+
+    .standby-overlay .cycle-info {
+        font-size: 0.9rem;
+        opacity: 0.7;
+        margin-top: 10px;
+    }
+
+    /* Enhanced responsive breakpoints */
+    @media (max-width: 576px) {
+        /* Mobile phones */
+        .main-container {
+            max-width: 96vw; /* Reduced from 98vw */
+            width: 96vw;
+            margin: 10px auto;
+            border-radius: 15px;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+        }
+        
+        .header p {
+            font-size: 1rem;
+        }
+        
+        .class-select-container {
+            flex-direction: column;
+            gap: 10px;
+            padding: 15px 20px;
+            width: 95%;
+        }
+        
+        .class-selector {
+            min-width: 200px;
+            width: 100%;
+        }
+        
+        .attendance-toast {
+            max-width: 90vw;
+            font-size: 1rem;
+            padding: 12px 20px;
+        }
+        
+        #attendanceToastText {
+            max-width: 70vw;
+        }
+        
+        .video-feed {
+            max-height: 50vh;
+            min-height: 300px;
+        }
+    }
+
+    @media (min-width: 577px) and (max-width: 768px) {
+        /* Tablets */
+        .main-container {
+            max-width: 94vw; /* Reduced from 96vw */
+            width: 94vw;
+        }
+        
+        .class-select-container {
+            max-width: 500px;
+            width: 85%;
+        }
+        
+        .attendance-toast {
+            max-width: 85vw;
+        }
+        
+        #attendanceToastText {
+            max-width: 65vw;
+        }
+    }
+
+    @media (min-width: 769px) and (max-width: 1024px) {
+        /* Small laptops */
+        .main-container {
+            max-width: 93vw; /* Reduced from 95vw */
+            width: 93vw;
+        }
+        
+        .class-select-container {
+            max-width: 550px;
+            width: 80%;
+        }
+        
+        .attendance-toast {
+            max-width: 80vw;
+        }
+        
+        #attendanceToastText {
+            max-width: 60vw;
+        }
+    }
+
+    @media (min-width: 1025px) and (max-width: 1440px) {
+        /* Large laptops */
+        .main-container {
+            max-width: 92vw; /* Reduced from 94vw */
+            width: 92vw;
+        }
+        
+        .class-select-container {
+            max-width: 600px;
+            width: 70%;
+        }
+        
+        .attendance-toast {
+            max-width: 75vw;
+        }
+        
+        #attendanceToastText {
+            max-width: 55vw;
+        }
+    }
+
+    @media (min-width: 1441px) {
+        /* Desktop monitors */
+        .main-container {
+            max-width: 96vw; /* Reduced from 98vw */
+            width: 96vw;
+        }
+        
+        .class-select-container {
+            max-width: 700px;
+            width: 60%;
+        }
+        
+        .attendance-toast {
+            max-width: 70vw;
+        }
+        
+        #attendanceToastText {
+            max-width: 50vw;
+        }
+    }
+
+    @media (min-width: 1920px) {
+        /* 4K and ultra-wide monitors */
+        .main-container {
+            max-width: 97vw; /* Reduced from 99vw */
+            width: 97vw;
+        }
+        
+        .class-select-container {
+            max-width: 800px;
+            width: 50%;
+        }
+        
+        .attendance-toast {
+            max-width: 65vw;
+        }
+        
+        #attendanceToastText {
+            max-width: 45vw;
+        }
+    }
+
+    /* Improve content layout responsiveness */
+    .container-fluid {
+        padding-left: 25px; /* Reduced from 30px */
+        padding-right: 25px;
+        box-sizing: border-box;
+    }
+
+    @media (min-width: 768px) {
+        .container-fluid {
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .container-fluid {
+            padding-left: 25px; /* Reduced from 30px */
+            padding-right: 25px;
+        }
+    }
+
+    /* Better grid system for different screen sizes */
+    .row {
+        margin-left: -8px;
+        margin-right: -8px;
+    }
+
+    @media (min-width: 768px) {
+        .row {
+            margin-left: -10px;
+            margin-right: -10px;
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .row {
+            margin-left: -15px;
+            margin-right: -15px;
+        }
+    }
+
+    .col, .col-md-6, .col-lg-4, .col-xl-3 {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    @media (min-width: 768px) {
+        .col, .col-md-6, .col-lg-4, .col-xl-3 {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .col, .col-md-6, .col-lg-4, .col-xl-3 {
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+    }
+
+    /* Improve video container responsiveness */
+    .video-container {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .video-feed {
+        width: 100%;
+        height: auto;
+        max-height: 70vh;
+        min-height: 400px;
+        object-fit: cover;
+    }
+
+    @media (max-width: 768px) {
+        .video-feed {
+            max-height: 60vh;
+            min-height: 350px;
+        }
+    }
+
+    @media (min-width: 1440px) {
+        .video-feed {
+            max-height: 75vh;
+            min-height: 500px;
+        }
+    }
+
+    /* Improve button responsiveness */
+    .btn-custom {
+        border-radius: 20px;
+        padding: 8px 20px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 576px) {
+        .btn-custom {
+            padding: 10px 16px;
+            font-size: 0.75rem;
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .btn-custom {
+            padding: 10px 24px;
+            font-size: 0.85rem;
+        }
+    }
+
+    /* Improve card responsiveness */
+    .attendance-card {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+
+    @media (max-width: 576px) {
+        .attendance-card {
+            padding: 12px;
+            margin: 8px 0;
+        }
+    }
+
+    @media (min-width: 1200px) {
+        .attendance-card {
+            padding: 20px;
+            margin: 15px 0;
+        }
+    }
+
+    /* Add this after the class selector or in the control panel */
+    .camera-controls {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .camera-toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .camera-label {
+        font-weight: 600;
+    }
+
+    .camera-toggle-buttons {
+        display: flex;
+        gap: 10px;
+    }
+
+    .camera-btn {
+        padding: 8px 16px;
+        border: 2px solid #ccc;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    .camera-btn.active {
+        background-color: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    .camera-status {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .status-indicator.status-inactive {
+        background-color: #dc3545;
+    }
+
+    .ip-camera-settings {
+        margin-top: 15px;
+    }
+
+    .input-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .input-group input[type="text"] {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+    }
+
+    .input-group button {
+        padding: 10px 20px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    .input-group button:hover {
+        background-color: #0056b3;
+    }
+
+    /* Add these styles */
+    .camera-controls {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 15px 0;
+        border: 1px solid #dee2e6;
+    }
+
+    .camera-toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .camera-label {
+        font-weight: 600;
+        color: #495057;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .camera-toggle-buttons {
+        display: flex;
+        gap: 5px;
+    }
+
+    .camera-btn {
+        border-radius: 20px;
+        padding: 6px 12px;
+        font-size: 0.8rem;
+        transition: all 0.3s ease;
+    }
+
+    .camera-btn.active {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        border-color: #4facfe;
+        color: white;
+    }
+
+    .camera-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+
+    .ip-camera-settings {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .ip-camera-settings .input-group {
+        max-width: 400px;
+    }
+
+    @media (max-width: 768px) {
+        .camera-toggle-container {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .camera-toggle-buttons {
+            width: 100%;
+        }
+        
+        .camera-btn {
+            flex: 1;
+        }
+    }
+</style> 
