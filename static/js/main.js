@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add camera event listeners
     document.getElementById('localCameraBtn').addEventListener('click', () => switchCamera('local'));
-    document.getElementById('ipCameraBtn').addEventListener('click', () => switchCamera('ip'));
+    // document.getElementById('ipCameraBtn').addEventListener('click', () => switchCamera('ip')); // This line is commented out to disable the feature
     
     // Update camera status periodically
     updateCameraStatus();
