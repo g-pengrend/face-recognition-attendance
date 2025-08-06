@@ -5,86 +5,84 @@ function switchCamera(mode) {
         return;
     }
     
-    // For IP camera mode, show settings first instead of immediately switching
-    if (mode === 'ip') {
-        showIpCameraSetup();
-        return;
-    }
-    
-    // For local camera, switch immediately
     performCameraSwitch(mode);
 }
 
-function showIpCameraSetup() {
-    // Show IP camera settings without switching yet
-    const ipSettings = document.getElementById('ipCameraSettings');
-    const localBtn = document.getElementById('localCameraBtn');
-    const ipBtn = document.getElementById('ipCameraBtn');
-    
-    ipSettings.style.display = 'block';
-    ipBtn.classList.add('active');
-    localBtn.classList.remove('active');
-    
-    // Don't actually switch camera mode yet - just show the setup
-    showAlert('info', 'Please configure your IP camera URL and test the connection before switching.');
-}
-
-function performCameraSwitch(mode) {
-    fetch('/api/camera/switch', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ mode: mode })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            currentCameraMode = data.mode;
-            updateCameraUI();
-            showAlert('success', `Switched to ${data.mode} camera`);
-            // Refresh video feed
-            const videoFeed = document.getElementById('videoFeed');
-            if (videoFeed) {
-                videoFeed.src = '/video_feed?' + new Date().getTime();
+async function performCameraSwitch(mode) {
+    try {
+        const response = await fetch('/api/camera/switch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ mode: mode })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentCameraMode = mode;
+            
+            if (mode === 'ip') {
+                // For IP mode, show the configuration panel
+                showIpCameraSetup();
+                showAlert('info', 'Please configure your IP camera address');
+            } else {
+                // For local mode, hide IP settings and update UI
+                document.getElementById('ipCameraSettings').style.display = 'none';
+                updateCameraUI();
+                showAlert('success', 'Switched to local camera');
             }
         } else {
-            showAlert('warning', data.message);
+            showAlert('danger', result.message || 'Failed to switch camera');
         }
-    })
-    .catch(error => {
-        console.error('Error switching camera:', error);
-        showAlert('danger', 'Error switching camera');
-    });
+    } catch (error) {
+        showAlert('danger', 'Error switching camera: ' + error.message);
+    }
 }
 
-function setIpCameraUrl() {
-    const url = document.getElementById('ipCameraUrl').value;
+function showIpCameraSetup() {
+    // Show IP camera settings panel
+    const ipSettings = document.getElementById('ipCameraSettings');
+    ipSettings.style.display = 'block';
     
-    if (!url) {
+    // Focus on the IP input field
+    const ipInput = document.getElementById('ipCameraUrl');
+    ipInput.focus();
+    
+    // Update camera status to show "needs configuration"
+    updateCameraStatus();
+}
+
+async function setIpCameraUrl() {
+    const ipUrl = document.getElementById('ipCameraUrl').value.trim();
+    
+    if (!ipUrl) {
         showAlert('danger', 'Please enter an IP camera URL');
         return;
     }
     
-    fetch('/api/camera/set-ip', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ ip_url: url })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showAlert('success', 'IP camera URL saved. Click "Test & Switch" to verify connection and switch to IP camera mode.');
+    try {
+        const response = await fetch('/api/camera/set-ip', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ip_url: ipUrl })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message);
+            document.getElementById('ipCameraSettings').style.display = 'none';
+            updateCameraUI();
         } else {
-            showAlert('danger', data.error);
+            showAlert('danger', result.message || 'Failed to configure IP camera');
         }
-    })
-    .catch(error => {
-        console.error('Error setting IP camera URL:', error);
-        showAlert('danger', 'Error updating IP camera URL');
-    });
+    } catch (error) {
+        showAlert('danger', 'Error configuring IP camera: ' + error.message);
+    }
 }
 
 function updateCameraUI() {
@@ -100,27 +98,37 @@ function updateCameraUI() {
     ipSettings.style.display = currentCameraMode === 'ip' ? 'block' : 'none';
 }
 
-function updateCameraStatus() {
-    fetch('/api/camera/status')
-    .then(response => response.json())
-    .then(data => {
+async function updateCameraStatus() {
+    try {
+        const response = await fetch('/api/camera/status');
+        const status = await response.json();
+        
         const statusIndicator = document.getElementById('cameraStatus');
         const statusText = document.getElementById('cameraStatusText');
         
-        if (data.connected) {
-            statusIndicator.className = 'status-indicator status-active';
-            statusText.textContent = `${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)} Camera Connected`;
+        if (status.mode === 'ip') {
+            if (status.needs_configuration) {
+                statusIndicator.className = 'status-indicator status-warning';
+                statusText.textContent = 'IP Camera - Needs Configuration';
+            } else if (status.connected) {
+                statusIndicator.className = 'status-indicator status-active';
+                statusText.textContent = 'IP Camera - Connected';
+            } else {
+                statusIndicator.className = 'status-indicator status-inactive';
+                statusText.textContent = 'IP Camera - Disconnected';
+            }
         } else {
-            statusIndicator.className = 'status-indicator status-inactive';
-            statusText.textContent = 'Camera Disconnected';
+            if (status.connected) {
+                statusIndicator.className = 'status-indicator status-active';
+                statusText.textContent = 'Local Camera - Connected';
+            } else {
+                statusIndicator.className = 'status-indicator status-inactive';
+                statusText.textContent = 'Local Camera - Disconnected';
+            }
         }
-        
-        currentCameraMode = data.mode;
-        updateCameraUI();
-    })
-    .catch(error => {
-        console.error('Error getting camera status:', error);
-    });
+    } catch (error) {
+        console.error('Error updating camera status:', error);
+    }
 }
 
 // Test IP camera connection
