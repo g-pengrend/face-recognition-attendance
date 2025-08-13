@@ -73,9 +73,9 @@ class AttendanceManager:
                 color = "warning"
                 category = "1 hour late"
             elif minutes_late < 120:
-                status = "90 minutes late"
+                status = "1.5 hours late"
                 color = "danger"
-                category = "90 min late"
+                category = "1.5 hours late"
             elif minutes_late < 150:
                 status = "2 hours late"
                 color = "danger"
@@ -324,7 +324,7 @@ class AttendanceManager:
             'On Time': 0,
             '30 min late': 0,
             '1 hour late': 0,
-            '90 min late': 0,
+            '1.5 hours late': 0,
             '2 hours late': 0,
             '2.5 hours late': 0,
             '3 hours late': 0,
@@ -441,8 +441,8 @@ class AttendanceManager:
                                 student_status = "Present - 30 min late"
                             elif lateness_category == "1 hour late":
                                 student_status = "Present - 1 hour late"
-                            elif lateness_category == "90 min late":
-                                student_status = "Present - 90 min late"
+                            elif lateness_category == "1.5 hours late":
+                                student_status = "Present - 1.5 hours late"
                             elif lateness_category == "2 hours late":
                                 student_status = "Present - 2 hours late"
                             elif lateness_category == "2.5 hours late":
