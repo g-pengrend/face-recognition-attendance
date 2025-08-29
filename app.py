@@ -728,6 +728,50 @@ def get_students():
     students = face_system.get_students_list()
     return jsonify({'students': students})
 
+# Add this function after the existing imports and before the routes
+def validate_session_name(session_name):
+    """Validate session name to prevent file system errors"""
+    if not session_name or not session_name.strip():
+        return False, "Session name cannot be empty"
+    
+    # Remove leading/trailing whitespace
+    session_name = session_name.strip()
+    
+    # Check for invalid characters that could cause file system issues
+    invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+    for char in invalid_chars:
+        if char in session_name:
+            return False, f"Session name cannot contain invalid characters: {char}"
+    
+    # Check length limits
+    if len(session_name) > 100:
+        return False, "Session name too long (max 100 characters)"
+    
+    # Check for reserved names
+    reserved_names = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9']
+    if session_name.upper() in reserved_names:
+        return False, f"Session name '{session_name}' is reserved and cannot be used"
+    
+    return True, session_name
+
+def check_session_name_exists(session_name):
+    """Check if a session with the given name already exists"""
+    try:
+        for fname in os.listdir('attendance_logs'):
+            if fname.endswith('.json'):
+                try:
+                    with open(os.path.join('attendance_logs', fname)) as f:
+                        session = json.load(f)
+                        if session.get('session_name', '').strip() == session_name.strip():
+                            return True, fname
+                except (json.JSONDecodeError, IOError):
+                    continue
+        return False, None
+    except Exception as e:
+        logger.error(f"Error checking session name existence: {e}")
+        return False, None
+
+# Update the start_detection route
 @app.route('/api/start-detection', methods=['POST'])
 def start_detection():
     """Start face detection and attendance tracking"""
@@ -741,6 +785,19 @@ def start_detection():
         session_name = request.json.get('session_name')
         session_start_time = request.json.get('session_start_time')
         class_name = request.json.get('class_name')
+        
+        # Validate session name
+        is_valid, validation_result = validate_session_name(session_name)
+        if not is_valid:
+            return jsonify({'error': validation_result}), 400
+        
+        # Check if session name already exists
+        name_exists, existing_file = check_session_name_exists(session_name)
+        if name_exists:
+            return jsonify({
+                'error': f'Session name "{session_name}" already exists. Please use a different name or resume the existing session.',
+                'existing_session': existing_file.replace('.json', '')
+            }), 400
         
         # Start attendance session with start time
         session_id = attendance_manager.start_session(session_name, session_start_time, class_name)
@@ -794,11 +851,28 @@ def stop_detection():
 def get_sessions():
     """List all saved sessions (JSON files)"""
     sessions = []
+    corrupted_files = []
+    
     for fname in os.listdir('attendance_logs'):
         if fname.endswith('.json'):
             try:
                 with open(os.path.join('attendance_logs', fname)) as f:
                     session = json.load(f)
+                    
+                    # Validate session data structure
+                    if not isinstance(session, dict):
+                        logger.warning(f"Invalid session structure in {fname}")
+                        corrupted_files.append(fname)
+                        continue
+                    
+                    # Check for required fields
+                    required_fields = ['session_id', 'session_name', 'session_start_time']
+                    missing_fields = [field for field in required_fields if field not in session]
+                    if missing_fields:
+                        logger.warning(f"Missing required fields in {fname}: {missing_fields}")
+                        corrupted_files.append(fname)
+                        continue
+                    
                     sessions.append({
                         'session_id': session.get('session_id', fname.replace('.json', '')),
                         'session_name': session.get('session_name', ''),
@@ -809,15 +883,24 @@ def get_sessions():
                         'present_students': len(session.get('attendance', {})),
                         'total_students': session.get('total_students', 0)
                     })
+                    
             except (json.JSONDecodeError, IOError) as e:
                 logger.warning(f"Error reading session file {fname}: {e}")
-                # Optionally remove corrupted file
-                # os.remove(os.path.join('attendance_logs', fname))
+                corrupted_files.append(fname)
                 continue
     
     # Sort by start_time descending
     sessions.sort(key=lambda s: s['start_time'], reverse=True)
-    return jsonify({'sessions': sessions})
+    
+    # Log corrupted files for debugging
+    if corrupted_files:
+        logger.warning(f"Found {len(corrupted_files)} corrupted session files: {corrupted_files}")
+    
+    return jsonify({
+        'sessions': sessions,
+        'corrupted_files_count': len(corrupted_files),
+        'corrupted_files': corrupted_files
+    })
 
 @app.route('/api/sessions/<session_id>')
 def get_session(session_id):
@@ -1950,6 +2033,53 @@ def test_ip_camera():
     except Exception as e:
         logger.error(f"Error testing IP camera: {e}")
         return jsonify({'error': f'Connection test failed: {str(e)}'}), 500
+
+@app.route('/api/sessions/suggestions/<session_name>')
+def get_session_suggestions(session_name):
+    """Get session suggestions when a name conflict occurs"""
+    try:
+        suggestions = []
+        partial_matches = []
+        exact_matches = []
+        
+        for fname in os.listdir('attendance_logs'):
+            if fname.endswith('.json'):
+                try:
+                    with open(os.path.join('attendance_logs', fname)) as f:
+                        session = json.load(f)
+                        existing_name = session.get('session_name', '').strip()
+                        
+                        if existing_name == session_name.strip():
+                            exact_matches.append({
+                                'session_id': session.get('session_id', fname.replace('.json', '')),
+                                'session_name': existing_name,
+                                'start_time': session.get('session_start_time', ''),
+                                'filename': fname
+                            })
+                        elif session_name.lower() in existing_name.lower():
+                            partial_matches.append({
+                                'session_id': session.get('session_id', fname.replace('.json', '')),
+                                'session_name': existing_name,
+                                'start_time': session.get('session_start_time', ''),
+                                'filename': fname
+                            })
+                            
+                except (json.JSONDecodeError, IOError):
+                    continue
+        
+        # Sort suggestions by relevance
+        suggestions = exact_matches + partial_matches
+        
+        return jsonify({
+            'success': True,
+            'suggestions': suggestions,
+            'exact_matches': len(exact_matches),
+            'partial_matches': len(partial_matches)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting session suggestions: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize systems
