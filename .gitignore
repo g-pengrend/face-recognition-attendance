@@ -18,3 +18,5 @@ cache/
 cache_metadata.json
 __pycache__/
 *.pyc
+CI2501A_attd_list.csv
+*.jpg
