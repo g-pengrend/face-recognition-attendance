@@ -208,7 +208,11 @@ async function createNewClass() {
         const result = await response.json();
         
         if (result.success) {
-            showAlert('success', `Class "${className}" created successfully with ${result.students_count} students!`);
+            const message = result.skipped_rows > 0 
+                ? `Class "${className}" created successfully with ${result.students_count} students! (Processed ${result.processed_rows} rows, skipped ${result.skipped_rows} invalid rows)`
+                : `Class "${className}" created successfully with ${result.students_count} students!`;
+            
+            showAlert('success', message);
             
             // Close modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('createClassModal'));

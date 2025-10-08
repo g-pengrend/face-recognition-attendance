@@ -1550,23 +1550,83 @@ def create_class():
         
         # Read CSV and create student folders
         students_count = 0
+        processed_rows = 0
+        skipped_rows = 0
+        
         try:
             # Read CSV content
             csv_content = csv_file.read().decode('utf-8')
-            csv_reader = csv.DictReader(csv_content.splitlines())
             
-            for row in csv_reader:
-                serial = row.get('Serial', '').strip()
-                name = row.get('Name', '').strip()
-                
-                if serial and name:
-                    # Create student folder with format: 01_John Doe
-                    student_folder = os.path.join(class_folder, f"{serial}_{name}")
-                    os.makedirs(student_folder, exist_ok=True)
-                    students_count += 1
+            if not csv_content.strip():
+                return jsonify({'error': 'CSV file is empty'}), 400
+            
+            # Try both DictReader and regular reader for flexibility
+            csv_lines = csv_content.splitlines()
+            
+            if not csv_lines:
+                return jsonify({'error': 'CSV file contains no data'}), 400
+            
+            # First, try to detect if it has headers by checking first line
+            first_line = csv_lines[0] if csv_lines else ""
+            has_headers = any(header in first_line.lower() for header in ['serial', 'name', 'student'])
+            
+            logger.info(f"CSV processing: has_headers={has_headers}, first_line='{first_line}'")
+            
+            if has_headers:
+                # Use DictReader for files with headers
+                csv_reader = csv.DictReader(csv_lines)
+                for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 since row 1 is header
+                    processed_rows += 1
                     
+                    # Try different possible column names
+                    serial = (row.get('Serial', '') or row.get('serial', '') or 
+                             row.get('Student ID', '') or row.get('student_id', '') or 
+                             row.get('ID', '') or row.get('id', '')).strip()
+                    name = (row.get('Name', '') or row.get('name', '') or 
+                           row.get('Student Name', '') or row.get('student_name', '') or 
+                           row.get('Full Name', '') or row.get('full_name', '')).strip()
+                    
+                    if serial and name:
+                        # Create student folder with format: 01_John_Doe (replace spaces with underscores)
+                        folder_name = f"{serial}_{name}".replace(" ", "_")
+                        student_folder = os.path.join(class_folder, folder_name)
+                        os.makedirs(student_folder, exist_ok=True)
+                        students_count += 1
+                        logger.info(f"Created student folder: {folder_name}")
+                    else:
+                        skipped_rows += 1
+                        logger.warning(f"Skipped row {row_num}: missing serial or name (serial='{serial}', name='{name}')")
+            else:
+                # Use regular reader for files without headers (like create_attendance.py)
+                csv_reader = csv.reader(csv_lines)
+                for row_num, row in enumerate(csv_reader, start=1):
+                    processed_rows += 1
+                    
+                    if len(row) >= 2:  # Ensure at least two columns: serial, name
+                        serial = row[0].strip()
+                        name = row[1].strip()
+                        
+                        if serial and name:
+                            # Create student folder with format: 01_John_Doe (replace spaces with underscores)
+                            folder_name = f"{serial}_{name}".replace(" ", "_")
+                            student_folder = os.path.join(class_folder, folder_name)
+                            os.makedirs(student_folder, exist_ok=True)
+                            students_count += 1
+                            logger.info(f"Created student folder: {folder_name}")
+                        else:
+                            skipped_rows += 1
+                            logger.warning(f"Skipped row {row_num}: missing serial or name (serial='{serial}', name='{name}')")
+                    else:
+                        skipped_rows += 1
+                        logger.warning(f"Skipped row {row_num}: insufficient columns (found {len(row)}, need at least 2)")
+                    
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decode error: {e}")
+            return jsonify({'error': 'CSV file encoding error. Please save as UTF-8 and try again.'}), 400
         except Exception as e:
             logger.error(f"Error processing CSV: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return jsonify({'error': f'Error processing CSV file: {str(e)}'}), 400
         
         if students_count == 0:
@@ -1575,7 +1635,7 @@ def create_class():
                 shutil.rmtree(class_folder)
             return jsonify({'error': 'No valid students found in CSV'}), 400
         
-        logger.info(f"Created class '{class_name}' with {students_count} students")
+        logger.info(f"Created class '{class_name}' with {students_count} students (processed {processed_rows} rows, skipped {skipped_rows} rows)")
         
         # Invalidate cache for the new class
         invalidate_cache(class_name)
@@ -1584,7 +1644,9 @@ def create_class():
             'success': True,
             'class_name': class_name,
             'students_count': students_count,
-            'message': f'Class "{class_name}" created successfully with {students_count} students'
+            'processed_rows': processed_rows,
+            'skipped_rows': skipped_rows,
+            'message': f'Class "{class_name}" created successfully with {students_count} students (processed {processed_rows} rows, skipped {skipped_rows} rows)'
         })
         
     except Exception as e:
