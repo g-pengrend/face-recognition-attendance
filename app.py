@@ -1560,6 +1560,11 @@ def create_class():
             if not csv_content.strip():
                 return jsonify({'error': 'CSV file is empty'}), 400
             
+            # Remove BOM (Byte Order Mark) if present
+            if csv_content.startswith('\ufeff'):
+                csv_content = csv_content[1:]
+                logger.info("Removed BOM from CSV file")
+            
             # Try both DictReader and regular reader for flexibility
             csv_lines = csv_content.splitlines()
             
@@ -1575,16 +1580,49 @@ def create_class():
             if has_headers:
                 # Use DictReader for files with headers
                 csv_reader = csv.DictReader(csv_lines)
+                logger.info(f"CSV columns detected: {csv_reader.fieldnames}")
+                
+                # Clean column names to remove BOM and extra whitespace
+                cleaned_fieldnames = {}
+                for fieldname in csv_reader.fieldnames:
+                    cleaned_name = fieldname.strip().replace('\ufeff', '')
+                    cleaned_fieldnames[fieldname] = cleaned_name
+                
                 for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 since row 1 is header
                     processed_rows += 1
                     
-                    # Try different possible column names
+                    # Try different possible column names (including cleaned versions)
                     serial = (row.get('Serial', '') or row.get('serial', '') or 
                              row.get('Student ID', '') or row.get('student_id', '') or 
-                             row.get('ID', '') or row.get('id', '')).strip()
+                             row.get('ID', '') or row.get('id', '') or
+                             row.get('No', '') or row.get('no', '') or
+                             row.get('Index', '') or row.get('index', '')).strip()
                     name = (row.get('Name', '') or row.get('name', '') or 
                            row.get('Student Name', '') or row.get('student_name', '') or 
-                           row.get('Full Name', '') or row.get('full_name', '')).strip()
+                           row.get('Full Name', '') or row.get('full_name', '') or
+                           row.get('Student', '') or row.get('student', '')).strip()
+                    
+                    # Also try with cleaned fieldnames
+                    if not serial or not name:
+                        for original_field, cleaned_field in cleaned_fieldnames.items():
+                            if cleaned_field.lower() in ['serial', 'id', 'no', 'index', 'student id'] and not serial:
+                                serial = row.get(original_field, '').strip()
+                            elif cleaned_field.lower() in ['name', 'student name', 'full name', 'student'] and not name:
+                                name = row.get(original_field, '').strip()
+                    
+                    # If we still don't have serial/name, try to find them by position
+                    if not serial or not name:
+                        # Get all non-empty values from the row
+                        values = [v.strip() for v in row.values() if v.strip()]
+                        
+                        # Try to identify serial and name by pattern
+                        for i, value in enumerate(values):
+                            # Check if value looks like a serial number (starts with digit)
+                            if not serial and value and value[0].isdigit():
+                                serial = value
+                            # Check if value looks like a name (contains letters and spaces)
+                            elif not name and value and any(c.isalpha() for c in value):
+                                name = value
                     
                     if serial and name:
                         # Create student folder with format: 01_John_Doe (replace spaces with underscores)
@@ -1605,6 +1643,20 @@ def create_class():
                     if len(row) >= 2:  # Ensure at least two columns: serial, name
                         serial = row[0].strip()
                         name = row[1].strip()
+                        
+                        # If first column is empty, try to find serial in other columns
+                        if not serial:
+                            for i, value in enumerate(row):
+                                if value.strip() and value.strip()[0].isdigit():
+                                    serial = value.strip()
+                                    break
+                        
+                        # If second column is empty, try to find name in other columns
+                        if not name:
+                            for i, value in enumerate(row):
+                                if value.strip() and any(c.isalpha() for c in value.strip()):
+                                    name = value.strip()
+                                    break
                         
                         if serial and name:
                             # Create student folder with format: 01_John_Doe (replace spaces with underscores)
