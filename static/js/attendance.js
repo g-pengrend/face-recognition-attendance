@@ -67,18 +67,24 @@ function updateLiveAttendanceFeed(attendance) {
         let badgeClass = 'badge-on-time';
         let itemClass = '';
         let lateness = data.lateness || {};
-        if (lateness.category === '0-30 min late') {
-            badgeClass = 'badge-late-0-30';
-            itemClass = 'late-0-30';
-        } else if (lateness.category === '30-60 min late') {
-            badgeClass = 'badge-late-30-60';
-            itemClass = 'late-30-60';
-        } else if (lateness.category === '60+ min late') {
-            badgeClass = 'badge-late-60-plus';
-            itemClass = 'late-60-plus';
-        } else if (lateness.category === 'On Time') {
+        if (lateness.category === 'On Time') {
             badgeClass = 'badge-on-time';
             itemClass = '';
+        } else if (lateness.category === '30 min late') {
+            badgeClass = 'badge-late-0-30';
+            itemClass = 'late-0-30';
+        } else if (lateness.category === '1 hour late') {
+            badgeClass = 'badge-late-30-60';
+            itemClass = 'late-30-60';
+        } else if (lateness.category === '1.5 hours late' || 
+                   lateness.category === '2 hours late' || 
+                   lateness.category === '2.5 hours late' || 
+                   lateness.category === '3 hours late') {
+            badgeClass = 'badge-late-60-plus';
+            itemClass = 'late-60-plus';
+        } else if (lateness.category === 'Absent') {
+            badgeClass = 'badge-absent';
+            itemClass = 'absent';
         } else {
             badgeClass = 'badge-on-time';
             itemClass = 'unknown';
